@@ -14,6 +14,7 @@ jest.mock('@/lib/storage', () => {
   let sequences: any[] = [];
   let settings: any = null;
   let timerSession: any = null;
+  let sessions: any[] = [];
 
   return {
     storage: {},
@@ -27,14 +28,18 @@ jest.mock('@/lib/storage', () => {
       defaultAutoAdvance: true,
       beepVolume: 0.8,
       beepPitch: 1.0,
-    defaultHalfwayAlert: false,
-    defaultAnnounceNames: false,
+      defaultHalfwayAlert: false,
+      defaultAnnounceNames: false,
+      getReadySeconds: 3,
+      reduceMotion: false,
     }),
     saveSettings: jest.fn((s: any) => { settings = s; }),
     getTimerSession: jest.fn(() => timerSession),
     saveTimerSession: jest.fn((s: any) => { timerSession = s; }),
     clearTimerSession: jest.fn(() => { timerSession = null; }),
-    __reset: () => { sequences = []; settings = null; timerSession = null; },
+    getSessions: jest.fn(() => sessions),
+    saveSessions: jest.fn((s: any[]) => { sessions = s; }),
+    __reset: () => { sequences = []; settings = null; timerSession = null; sessions = []; },
   };
 });
 
@@ -50,11 +55,13 @@ jest.mock('uuid', () => ({
 import { useSequenceStore } from '@/stores/sequenceStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useTimerStore } from '@/stores/timerStore';
+import { useSessionStore } from '@/stores/sessionStore';
 import type { Sequence } from '@/types/sequence';
 import type { Interval } from '@/types/interval';
 import type { TimerTickData } from '@/types/timer';
 import type { AppSettings } from '@/types/settings';
-import { getSequences, saveSequences, getSettings, saveSettings } from '@/lib/storage';
+import type { WorkoutSession } from '@/types/session';
+import { getSequences, saveSequences, getSettings, saveSettings, saveSessions } from '@/lib/storage';
 
 // Access the __reset helper from the mocked storage module.
 const storageMock = jest.requireMock('@/lib/storage') as {
@@ -63,6 +70,8 @@ const storageMock = jest.requireMock('@/lib/storage') as {
   saveSequences: jest.Mock;
   getSettings: jest.Mock;
   saveSettings: jest.Mock;
+  getSessions: jest.Mock;
+  saveSessions: jest.Mock;
 };
 
 // ---------------------------------------------------------------------------
@@ -98,6 +107,28 @@ function makeSequence(overrides?: Partial<Sequence>): Sequence {
     created_at: '2025-01-01T00:00:00.000Z',
     updated_at: '2025-01-01T00:00:00.000Z',
     last_used_at: null,
+    ...overrides,
+  };
+}
+
+function makeSession(overrides?: Partial<WorkoutSession>): WorkoutSession {
+  return {
+    id: `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    sequence_id: 'seq-123',
+    sequence_snapshot: makeSequence(),
+    started_at: '2025-06-01T10:00:00.000Z',
+    ended_at: '2025-06-01T10:30:00.000Z',
+    status: 'completed',
+    stopped_at_interval: null,
+    stopped_at_round: null,
+    intervals_completed: 3,
+    rounds_completed: 1,
+    total_active_seconds: 1200,
+    total_rest_seconds: 600,
+    pauses: [],
+    created_at: '2025-06-01T10:00:00.000Z',
+    updated_at: '2025-06-01T10:30:00.000Z',
+    deleted_at: null,
     ...overrides,
   };
 }
@@ -141,7 +172,14 @@ const INITIAL_SETTINGS_STATE = {
     beepPitch: 1.0,
     defaultHalfwayAlert: false,
     defaultAnnounceNames: false,
+    getReadySeconds: 3,
+    reduceMotion: false,
   },
+  isLoaded: false,
+};
+
+const INITIAL_SESSION_STATE = {
+  sessions: [] as WorkoutSession[],
   isLoaded: false,
 };
 
@@ -757,6 +795,8 @@ describe('SettingsStore', () => {
         beepPitch: 1.5,
         defaultHalfwayAlert: true,
         defaultAnnounceNames: true,
+        getReadySeconds: 5,
+        reduceMotion: false,
       });
 
       useSettingsStore.getState().loadFromStorage();
@@ -957,6 +997,138 @@ describe('TimerStore', () => {
 
       useTimerStore.getState().toggleExpanded();
       expect(useTimerStore.getState().isExpanded).toBe(true);
+    });
+  });
+});
+
+// ============================================================================
+// SessionStore
+// ============================================================================
+
+describe('SessionStore', () => {
+  beforeEach(() => {
+    useSessionStore.setState(INITIAL_SESSION_STATE);
+    storageMock.__reset();
+    mockUuidCounter = 0;
+    jest.clearAllMocks();
+  });
+
+  describe('importSessions', () => {
+    it('adds new sessions that are not in the store', () => {
+      const incoming = makeSession({ id: 'import-s1', status: 'completed' });
+
+      const result = useSessionStore.getState().importSessions([incoming]);
+
+      expect(result.added).toBe(1);
+      expect(result.skipped).toBe(0);
+
+      const state = useSessionStore.getState();
+      expect(state.sessions).toHaveLength(1);
+      expect(state.sessions[0].id).toBe('import-s1');
+      expect(state.sessions[0].status).toBe('completed');
+    });
+
+    it('assigns new UUID to sessions with duplicate IDs', () => {
+      const existing = makeSession({ id: 'dup-session', status: 'completed' });
+      useSessionStore.setState({ sessions: [existing] });
+
+      const incoming = makeSession({ id: 'dup-session', status: 'stopped' });
+
+      const result = useSessionStore.getState().importSessions([incoming]);
+
+      expect(result.added).toBe(1);
+      const state = useSessionStore.getState();
+      expect(state.sessions).toHaveLength(2);
+
+      // Original keeps its ID
+      expect(state.sessions[0].id).toBe('dup-session');
+      // Imported gets a new UUID
+      expect(state.sessions[1].id).not.toBe('dup-session');
+      expect(state.sessions[1].id).toBe('test-uuid-1');
+      expect(state.sessions[1].status).toBe('stopped');
+    });
+
+    it('skips entries with invalid shape (missing id)', () => {
+      const malformed = { sequence_id: 'seq-1', started_at: '2025-01-01T00:00:00Z', status: 'completed' } as any;
+
+      const result = useSessionStore.getState().importSessions([malformed]);
+
+      expect(result.added).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(useSessionStore.getState().sessions).toHaveLength(0);
+    });
+
+    it('skips entries with invalid shape (missing sequence_id)', () => {
+      const malformed = { id: 'bad-1', started_at: '2025-01-01T00:00:00Z', status: 'completed' } as any;
+
+      const result = useSessionStore.getState().importSessions([malformed]);
+
+      expect(result.added).toBe(0);
+      expect(result.skipped).toBe(1);
+    });
+
+    it('skips entries with invalid shape (missing started_at)', () => {
+      const malformed = { id: 'bad-2', sequence_id: 'seq-1', status: 'completed' } as any;
+
+      const result = useSessionStore.getState().importSessions([malformed]);
+
+      expect(result.added).toBe(0);
+      expect(result.skipped).toBe(1);
+    });
+
+    it('skips entries with invalid shape (missing status)', () => {
+      const malformed = { id: 'bad-3', sequence_id: 'seq-1', started_at: '2025-01-01T00:00:00Z' } as any;
+
+      const result = useSessionStore.getState().importSessions([malformed]);
+
+      expect(result.added).toBe(0);
+      expect(result.skipped).toBe(1);
+    });
+
+    it('skips null/undefined entries', () => {
+      const result = useSessionStore.getState().importSessions([null as any, undefined as any]);
+
+      expect(result.added).toBe(0);
+      expect(result.skipped).toBe(2);
+    });
+
+    it('returns 0 added and 0 skipped for empty array', () => {
+      const result = useSessionStore.getState().importSessions([]);
+
+      expect(result.added).toBe(0);
+      expect(result.skipped).toBe(0);
+      expect(useSessionStore.getState().sessions).toHaveLength(0);
+    });
+
+    it('handles a mix of valid and invalid entries', () => {
+      const valid = makeSession({ id: 'valid-s1' });
+      const malformed = { id: 'bad-4' } as any;
+
+      const result = useSessionStore.getState().importSessions([valid, malformed]);
+
+      expect(result.added).toBe(1);
+      expect(result.skipped).toBe(1);
+      expect(useSessionStore.getState().sessions).toHaveLength(1);
+    });
+
+    it('persists after import', () => {
+      const incoming = makeSession({ id: 'persist-session' });
+
+      useSessionStore.getState().importSessions([incoming]);
+
+      expect(saveSessions).toHaveBeenCalled();
+    });
+
+    it('sets updated_at to the current timestamp', () => {
+      const incoming = makeSession({ id: 'ts-session', updated_at: '2024-01-01T00:00:00.000Z' });
+
+      const before = new Date().toISOString();
+      useSessionStore.getState().importSessions([incoming]);
+      const after = new Date().toISOString();
+
+      const imported = useSessionStore.getState().sessions[0];
+      expect(imported.updated_at >= before).toBe(true);
+      expect(imported.updated_at <= after).toBe(true);
     });
   });
 });

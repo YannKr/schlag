@@ -62,6 +62,9 @@ export interface SessionStore {
   // Soft delete (recoverable for 30 days).
   deleteSession: (sessionId: string) => void;
 
+  // Import sessions from JSON. Merges: adds new (by ID), never overwrites existing.
+  importSessions: (data: WorkoutSession[]) => { added: number; skipped: number };
+
   // Get sessions (excluding soft-deleted).
   getActiveSessions: () => WorkoutSession[];
 
@@ -281,6 +284,52 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       });
       return { sessions: persist(sessions) };
     });
+  },
+
+  // -------------------------------------------------------------------------
+  // Import
+  // -------------------------------------------------------------------------
+
+  importSessions: (data) => {
+    const state = get();
+    const existingIds = new Set(state.sessions.map((s) => s.id));
+
+    let added = 0;
+    let skipped = 0;
+    const newSessions: WorkoutSession[] = [];
+
+    for (const incoming of data) {
+      // Validate minimum shape -- skip garbage entries silently.
+      if (
+        !incoming ||
+        typeof incoming.id !== 'string' ||
+        typeof incoming.sequence_id !== 'string' ||
+        typeof incoming.started_at !== 'string' ||
+        typeof incoming.status !== 'string'
+      ) {
+        skipped++;
+        continue;
+      }
+
+      // If the ID already exists locally, assign a fresh UUID (merge, never overwrite).
+      const session: WorkoutSession = {
+        ...deepClone(incoming),
+        id: existingIds.has(incoming.id) ? uuidv4() : incoming.id,
+        updated_at: now(),
+      };
+
+      newSessions.push(session);
+      existingIds.add(session.id);
+      added++;
+    }
+
+    if (newSessions.length > 0) {
+      set((state) => ({
+        sessions: persist([...state.sessions, ...newSessions]),
+      }));
+    }
+
+    return { added, skipped };
   },
 
   // -------------------------------------------------------------------------
