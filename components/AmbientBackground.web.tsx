@@ -45,7 +45,7 @@ export interface AmbientBackgroundProps {
 // ---------------------------------------------------------------------------
 
 /** Cool end-point colors (colorTemp = 0). */
-const COOL_BG = '#1A1A2E';
+const COOL_BG = '#1A1A1A';
 const COOL_GLOW = '#00B4D8';
 
 /** Hot end-point colors (colorTemp = 1). */
