@@ -31,9 +31,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/Button';
-import { CountdownTimer } from '@/components/CountdownTimer';
+import { AnimatedCountdown } from '@/components/AnimatedCountdown';
 import { IconButton } from '@/components/IconButton';
 import { ProgressBar } from '@/components/ProgressBar';
+import AmbientBackground from '@/components/AmbientBackground';
+import { useIntensity } from '@/hooks/useIntensity';
+import { INTENSITY_COLORS } from '@/lib/intensity';
+import { interpolateColor } from 'react-native-reanimated';
 
 import { APP_COLORS, getTextColorForInterval } from '@/constants/colors';
 import { LAYOUT, SPACING } from '@/constants/layout';
@@ -364,19 +368,75 @@ function TapToContinueOverlay({ onTap }: { onTap: () => void }) {
   );
 }
 
-/** Workout complete celebration screen. */
-function WorkoutCompleteScreen({ onDone }: { onDone: () => void }) {
+/** Workout complete celebration screen with staggered stats. */
+function WorkoutCompleteScreen({
+  onDone,
+  elapsedSeconds,
+  totalIntervals,
+  roundsCompleted,
+  totalRounds,
+}: {
+  onDone: () => void;
+  elapsedSeconds: number;
+  totalIntervals: number;
+  roundsCompleted: number;
+  totalRounds: number;
+}) {
+  const [visibleStats, setVisibleStats] = useState(0);
+  const [showButton, setShowButton] = useState(false);
+
+  useEffect(() => {
+    // Stagger stats appearance: 600ms delay, then 200ms per stat
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    timers.push(setTimeout(() => setVisibleStats(1), 600));
+    timers.push(setTimeout(() => setVisibleStats(2), 800));
+    timers.push(setTimeout(() => setVisibleStats(3), 1000));
+    timers.push(setTimeout(() => setVisibleStats(4), 1200));
+    timers.push(setTimeout(() => setShowButton(true), 1400));
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  const formatElapsed = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const stats = [
+    { label: 'TOTAL TIME', value: formatElapsed(elapsedSeconds), color: APP_COLORS.primary },
+    { label: 'ROUNDS', value: totalRounds > 0 ? `${roundsCompleted}/${totalRounds}` : String(roundsCompleted), color: '#2DC653' },
+    { label: 'INTERVALS', value: String(totalIntervals), color: '#F4722B' },
+    { label: 'COMPLETED', value: '100%', color: '#00B4D8' },
+  ];
+
   return (
     <View style={styles.completeContainer}>
       <Text style={styles.completeTitle}>WORKOUT COMPLETE</Text>
-      <Text style={styles.completeSubtitle}>Great work! You crushed it.</Text>
-      <Button
-        title="Done"
-        onPress={onDone}
-        variant="primary"
-        style={styles.completeButton}
-        accessibilityLabel="Return to library"
-      />
+      <Text style={styles.completeSubtitle}>Great work. You crushed it.</Text>
+
+      <View style={styles.statsGrid}>
+        {stats.map((stat, i) => (
+          <View
+            key={stat.label}
+            style={[styles.statItem, { opacity: i < visibleStats ? 1 : 0 }]}
+          >
+            <Text style={[styles.statValue, { color: stat.color }]}>{stat.value}</Text>
+            <Text style={styles.statLabel}>{stat.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      {showButton && (
+        <Button
+          title="Done"
+          onPress={onDone}
+          variant="primary"
+          style={styles.completeButton}
+          accessibilityLabel="Return to library"
+        />
+      )}
     </View>
   );
 }
@@ -619,6 +679,9 @@ export default function WorkoutScreen() {
 
   // Timer loop hook.
   const timerLoop = useTimerLoop();
+
+  // Intensity engine — drives ambient visual effects.
+  const intensity = useIntensity(timerLoop.tickData);
 
   // Local state.
   const [showTapToContinue, setShowTapToContinue] = useState(false);
@@ -931,6 +994,7 @@ export default function WorkoutScreen() {
   // ---------------------------------------------------------------------------
 
   if (tickData.status === 'completed') {
+    const elapsedSeconds = Math.floor((Date.now() - startedAtRef.current) / 1000);
     return (
       <View
         style={[
@@ -939,7 +1003,21 @@ export default function WorkoutScreen() {
         ]}
       >
         <StatusBar barStyle="light-content" />
-        <WorkoutCompleteScreen onDone={handleDone} />
+        <AmbientBackground
+          colorTemp={0}
+          glowRadius={80}
+          glowOpacity={0.1}
+          pulse={0.2}
+          isPaused={false}
+          act="release"
+        />
+        <WorkoutCompleteScreen
+          onDone={handleDone}
+          elapsedSeconds={elapsedSeconds}
+          totalIntervals={tickData.totalIntervals}
+          roundsCompleted={tickData.totalRounds > 0 ? tickData.totalRounds : tickData.currentRound}
+          totalRounds={tickData.totalRounds}
+        />
       </View>
     );
   }
@@ -973,8 +1051,17 @@ export default function WorkoutScreen() {
     >
       <StatusBar barStyle={statusBarStyle} />
 
-      {/* Dark theme tint overlay */}
-      {tintOverlayColor && (
+      {/* Narrative arc ambient background (replaces old tint overlay on dark theme) */}
+      {theme === 'dark' ? (
+        <AmbientBackground
+          colorTemp={intensity.colorTemp.value}
+          glowRadius={intensity.glowRadius.value}
+          glowOpacity={intensity.glowOpacity.value}
+          pulse={intensity.pulse.value}
+          isPaused={intensity.isPaused}
+          act={intensity.act}
+        />
+      ) : tintOverlayColor ? (
         <View
           style={[
             StyleSheet.absoluteFillObject,
@@ -982,7 +1069,7 @@ export default function WorkoutScreen() {
           ]}
           pointerEvents="none"
         />
-      )}
+      ) : null}
 
       {/* Main content area */}
       <View style={[styles.contentArea, webContainerStyle]}>
@@ -1021,13 +1108,14 @@ export default function WorkoutScreen() {
             {currentInterval.name.toUpperCase()}
           </Text>
 
-          {/* Countdown timer */}
-          <CountdownTimer
+          {/* Countdown timer with narrative arc animation */}
+          <AnimatedCountdown
             formattedTime={formattedTime}
-            style={[
-              isExpanded && styles.countdownSmaller,
-              { color: textColor },
-            ]}
+            remainingMs={tickData.remainingMs}
+            textColor={textColor}
+            glowColor={INTENSITY_COLORS.hot.glow}
+            act={intensity.act}
+            fontSize={isExpanded ? FONT_SIZE.countdownSmall : FONT_SIZE.countdownMedium}
           />
 
           {/* Progress bar */}
@@ -1042,6 +1130,7 @@ export default function WorkoutScreen() {
                   : intervalColor
               }
               style={styles.progressBar}
+              act={intensity.act}
             />
           </View>
 
@@ -1300,6 +1389,30 @@ const styles = StyleSheet.create({
   completeButton: {
     minWidth: 200,
     marginTop: SPACING.xl,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: SPACING.xl,
+    marginTop: SPACING.lg,
+  },
+  statItem: {
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  statValue: {
+    fontFamily: FONT_FAMILY.mono,
+    fontSize: FONT_SIZE.headingMedium,
+    fontWeight: FONT_WEIGHT.bold,
+  },
+  statLabel: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.caption,
+    fontWeight: FONT_WEIGHT.medium,
+    color: 'rgba(255, 255, 255, 0.4)',
+    letterSpacing: 1,
+    marginTop: 2,
   },
 
   // Timeline (expanded view)

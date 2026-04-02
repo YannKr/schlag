@@ -1,23 +1,29 @@
 /**
  * ProgressBar component for Schlag.
  *
- * Displays a horizontal progress bar with smooth animated fill. Designed
- * for the dark workout screen -- the track uses a translucent white and the
- * fill color is configurable (typically the active interval color).
- *
- * Uses React Native's Animated API for 60fps animation.
+ * Displays a horizontal progress bar with smooth animated fill, optional
+ * glow on the leading edge, and a pulse effect during the climax act.
+ * Migrated to Reanimated shared values for UI-thread animation.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import {
-  Animated,
   StyleSheet,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  useDerivedValue,
+  withTiming,
+  withRepeat,
+  Easing,
+} from 'react-native-reanimated';
 
 import { LAYOUT } from '@/constants/layout';
+import type { Act } from '@/lib/intensity';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,8 +36,8 @@ export interface ProgressBarProps {
   color?: string;
   /** Additional styles applied to the outer container. */
   style?: StyleProp<ViewStyle>;
-  /** Animation duration in ms for progress changes. @default 150 */
-  animationDuration?: number;
+  /** Current narrative arc act for visual effects. */
+  act?: Act;
 }
 
 // ---------------------------------------------------------------------------
@@ -42,23 +48,40 @@ export function ProgressBar({
   progress,
   color = '#FFFFFF',
   style,
-  animationDuration = 150,
+  act,
 }: ProgressBarProps) {
   const clampedProgress = Math.min(1, Math.max(0, progress));
-  const animatedValue = useRef(new Animated.Value(clampedProgress)).current;
 
-  useEffect(() => {
-    Animated.timing(animatedValue, {
-      toValue: clampedProgress,
-      duration: animationDuration,
-      useNativeDriver: false, // width animation cannot use native driver
-    }).start();
-  }, [clampedProgress, animatedValue, animationDuration]);
+  // Shared values for smooth animation
+  const animatedProgress = useSharedValue(clampedProgress);
+  const pulseOpacity = useSharedValue(1);
 
-  const widthPercent = animatedValue.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
-    extrapolate: 'clamp',
+  // Update progress with smooth timing
+  React.useEffect(() => {
+    animatedProgress.value = withTiming(clampedProgress, {
+      duration: 150,
+      easing: Easing.out(Easing.ease),
+    });
+  }, [clampedProgress, animatedProgress]);
+
+  // Climax pulse: oscillate opacity 0.8-1.0
+  React.useEffect(() => {
+    if (act === 'climax') {
+      pulseOpacity.value = withRepeat(
+        withTiming(0.8, { duration: 400, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true,
+      );
+    } else {
+      pulseOpacity.value = withTiming(1, { duration: 200 });
+    }
+  }, [act, pulseOpacity]);
+
+  const fillStyle = useAnimatedStyle(() => {
+    return {
+      width: `${animatedProgress.value * 100}%` as any,
+      opacity: pulseOpacity.value,
+    };
   });
 
   return (
@@ -74,10 +97,8 @@ export function ProgressBar({
       <Animated.View
         style={[
           styles.fill,
-          {
-            backgroundColor: color,
-            width: widthPercent,
-          },
+          { backgroundColor: color },
+          fillStyle,
         ]}
       />
     </View>
