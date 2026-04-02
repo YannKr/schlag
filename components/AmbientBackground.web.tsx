@@ -150,8 +150,14 @@ export default function AmbientBackground({
   // Glow circle dimensions and positioning
   // -----------------------------------------------------------------------
 
-  const diameter = glowRadius * 2;
-  const glowBgColor = hexToRgba(glowColor, effectiveOpacity);
+  const glowRgba = hexToRgba(glowColor, effectiveOpacity);
+  const glowRgbaTransparent = hexToRgba(glowColor, 0);
+
+  // On web, use CSS radial-gradient for a smooth falloff (no hard edge).
+  // The gradient goes from the glow color at center to fully transparent.
+  const gradientStyle = {
+    background: `radial-gradient(ellipse at 50% 40%, ${glowRgba} 0%, ${glowRgbaTransparent} ${glowRadius}px, transparent ${glowRadius * 1.5}px)`,
+  } as any;
 
   return (
     <View
@@ -160,23 +166,8 @@ export default function AmbientBackground({
     >
       <Animated.View
         style={[
-          styles.glowCircle,
-          {
-            width: diameter,
-            height: diameter,
-            borderRadius: 9999,
-            backgroundColor: glowBgColor,
-            // Position center at 50% width, 40% height
-            left: '50%',
-            top: '40%',
-            marginLeft: -glowRadius,
-            marginTop: -glowRadius,
-            // Soft shadow for diffusion
-            shadowColor: glowColor,
-            shadowOffset: { width: 0, height: 0 },
-            shadowRadius: glowRadius,
-            shadowOpacity: effectiveOpacity,
-          },
+          StyleSheet.absoluteFillObject,
+          gradientStyle,
           glowAnimatedStyle,
         ]}
       />
@@ -188,8 +179,4 @@ export default function AmbientBackground({
 // Styles
 // ---------------------------------------------------------------------------
 
-const styles = StyleSheet.create({
-  glowCircle: {
-    position: 'absolute',
-  },
-});
+// No additional styles needed — all styling is inline via CSS radial-gradient.

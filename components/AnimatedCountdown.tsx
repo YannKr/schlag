@@ -165,13 +165,11 @@ export function AnimatedCountdown({
 
   const glowStyle =
     act === 'climax'
-      ? Platform.OS === 'web'
-        ? { textShadowColor: glowColor, textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 16 }
-        : {
-            textShadowColor: glowColor,
-            textShadowOffset: { width: 0, height: 0 },
-            textShadowRadius: 16,
-          }
+      ? {
+          textShadowColor: glowColor,
+          textShadowOffset: { width: 0, height: 0 },
+          textShadowRadius: 8,
+        }
       : undefined;
 
   // -------------------------------------------------------------------------
