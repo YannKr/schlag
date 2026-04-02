@@ -21,6 +21,7 @@ import { AppState, AppStateStatus, Platform } from 'react-native';
 import type { Sequence, TimerTickData, ToneName } from '@/types';
 import { TimerEngine } from '@/lib/timer/timerEngine';
 import { AudioEngine } from '@/lib/audio/audioEngine';
+import { useSettingsStore } from '@/stores/settingsStore';
 import {
   saveTimerSession,
   clearTimerSession,
@@ -97,6 +98,9 @@ export function useTimerLoop(): UseTimerLoopReturn {
   const [tickData, setTickData] = useState<TimerTickData | null>(null);
   const [isActive, setIsActive] = useState(false);
 
+  // Global voice countdown setting (overrides per-sequence config when off).
+  const globalVoiceEnabled = useSettingsStore((s) => s.settings.voiceCountdownEnabled);
+
   // -----------------------------------------------------------------------
   // Audio cue dispatcher
   // -----------------------------------------------------------------------
@@ -106,7 +110,9 @@ export function useTimerLoop(): UseTimerLoopReturn {
       if (!sequence) return;
 
       const audio = audioRef.current;
-      const voiceEnabled = sequence.audio_config.use_voice_countdown;
+      // Voice is only enabled if BOTH the global setting AND the per-sequence
+      // setting are true. The global toggle in Settings is the master switch.
+      const voiceEnabled = globalVoiceEnabled && sequence.audio_config.use_voice_countdown;
       const beepsEnabled = sequence.audio_config.use_builtin_beeps;
 
       for (const cue of cues) {
@@ -154,7 +160,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
         }
       }
     },
-    [],
+    [globalVoiceEnabled],
   );
 
   // -----------------------------------------------------------------------
@@ -181,7 +187,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
       // Speak next interval name when the interval-end cue fires.
       if (cues.includes('intervalEnd') && data.nextInterval) {
         const seq = sequenceRef.current;
-        if (seq?.audio_config.use_voice_countdown) {
+        if (globalVoiceEnabled && seq?.audio_config.use_voice_countdown) {
           audioRef.current.speakNextInterval(
             data.nextInterval.name,
             true,
@@ -192,7 +198,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
       // v2: Announce current interval name at the start.
       if (cues.includes('intervalStart')) {
         const seq = sequenceRef.current;
-        if (seq?.audio_config.announce_interval_names && seq.audio_config.use_voice_countdown) {
+        if (globalVoiceEnabled && seq?.audio_config.announce_interval_names && seq.audio_config.use_voice_countdown) {
           audioRef.current.speakNextInterval(
             data.currentInterval.name,
             true,
