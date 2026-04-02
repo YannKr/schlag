@@ -46,6 +46,14 @@ export interface AmbientBackgroundProps {
   isPaused: boolean;
   /** Current dramatic arc of the workout. */
   act: 'opening' | 'rising' | 'climax' | 'release';
+  /** Override cool background color (default: #1A1A1A). */
+  coolBg?: string;
+  /** Override hot background color (default: #2A0A0A). */
+  hotBg?: string;
+  /** Override cool glow color (default: #00B4D8). */
+  coolGlow?: string;
+  /** Override hot glow color (default: #E63946). */
+  hotGlow?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,8 +111,18 @@ export default function AmbientBackground({
   glowOpacity,
   pulse,
   isPaused,
+  coolBg: coolBgOverride,
+  hotBg: hotBgOverride,
+  coolGlow: coolGlowOverride,
+  hotGlow: hotGlowOverride,
 }: AmbientBackgroundProps) {
   const { width, height } = useWindowDimensions();
+
+  // Resolve color palette (allow per-theme overrides).
+  const effectiveCoolBg = coolBgOverride ?? COOL_BG;
+  const effectiveHotBg = hotBgOverride ?? HOT_BG;
+  const effectiveCoolGlow = coolGlowOverride ?? COOL_GLOW;
+  const effectiveHotGlow = hotGlowOverride ?? HOT_GLOW;
 
   // -----------------------------------------------------------------------
   // Resolve effective values based on paused state
@@ -118,8 +136,8 @@ export default function AmbientBackground({
   // Interpolate colors
   // -----------------------------------------------------------------------
 
-  const bgColor = lerpColor(COOL_BG, HOT_BG, colorTemp);
-  const glowColor = lerpColor(COOL_GLOW, HOT_GLOW, colorTemp);
+  const bgColor = lerpColor(effectiveCoolBg, effectiveHotBg, colorTemp);
+  const glowColor = lerpColor(effectiveCoolGlow, effectiveHotGlow, colorTemp);
 
   // Apply brightness dimming to background when paused
   const dimmedBg = isPaused ? lerpColor(bgColor, '#000000', 1 - brightnessFactor) : bgColor;
