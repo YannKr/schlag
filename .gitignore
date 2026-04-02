@@ -1,0 +1,49 @@
+node_modules/
+.expo/
+dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+ios/
+android/
+
+# Env files
+.env
+.env.local
+.env.production
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# Build tooling
+.gstack/
+
+# BMAD framework (internal planning)
+_bmad/
+_bmad-output/
+
+# Claude Code config (user-specific)
+.claude/
+
+# Original PRD source
+Schlag_PRD_v1.0.docx
