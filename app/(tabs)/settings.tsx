@@ -121,6 +121,13 @@ const THEME_OPTIONS: { label: string; value: WorkoutTheme }[] = [
   { label: 'Color', value: 'interval-color' },
 ];
 
+const GET_READY_OPTIONS: { label: string; value: number }[] = [
+  { label: 'Off', value: 0 },
+  { label: '3s', value: 3 },
+  { label: '5s', value: 5 },
+  { label: '10s', value: 10 },
+];
+
 function ThemeSegmentedControl({
   selected,
   onChange,
@@ -140,6 +147,47 @@ function ThemeSegmentedControl({
               onPress={() => onChange(option.value)}
               accessibilityRole="button"
               accessibilityLabel={`Theme: ${option.label}`}
+              accessibilityState={{ selected: isActive }}
+              style={[
+                styles.segmentedOption,
+                isActive && styles.segmentedOptionActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.segmentedOptionText,
+                  isActive && styles.segmentedOptionTextActive,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function GetReadySegmentedControl({
+  selected,
+  onChange,
+}: {
+  selected: number;
+  onChange: (seconds: number) => void;
+}) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>Get ready countdown</Text>
+      <View style={styles.segmentedControl}>
+        {GET_READY_OPTIONS.map((option) => {
+          const isActive = selected === option.value;
+          return (
+            <Pressable
+              key={option.value}
+              onPress={() => onChange(option.value)}
+              accessibilityRole="button"
+              accessibilityLabel={`Get ready: ${option.label}`}
               accessibilityState={{ selected: isActive }}
               style={[
                 styles.segmentedOption,
@@ -244,6 +292,7 @@ export default function SettingsScreen() {
   // Session store (v2 history)
   const sessions = useSessionStore((s) => s.sessions);
   const getActiveSessions = useSessionStore((s) => s.getActiveSessions);
+  const importSessions = useSessionStore((s) => s.importSessions);
 
   // Pro store (v2)
   const proStatus = useProStore((s) => s.proStatus);
@@ -294,6 +343,16 @@ export default function SettingsScreen() {
 
   const handleKeepAwakeToggle = useCallback(
     (val: boolean) => updateSetting('keepScreenAwake', val),
+    [updateSetting],
+  );
+
+  const handleGetReadyChange = useCallback(
+    (seconds: number) => updateSetting('getReadySeconds', seconds),
+    [updateSetting],
+  );
+
+  const handleReduceMotionToggle = useCallback(
+    (val: boolean) => updateSetting('reduceMotion', val),
     [updateSetting],
   );
 
@@ -373,6 +432,39 @@ export default function SettingsScreen() {
       Alert.alert('Export Failed', 'An error occurred while exporting history.');
     }
   }, [getActiveSessions]);
+
+  const handleImportHistory = useCallback(() => {
+    if (Platform.OS === 'web') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.json';
+      input.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          if (!Array.isArray(data)) {
+            Alert.alert('Import Failed', 'File does not contain a valid session array.');
+            return;
+          }
+          const result = importSessions(data);
+          Alert.alert(
+            'Import Complete',
+            `Imported ${result.added} sessions (${result.skipped} skipped)`,
+          );
+        } catch (error) {
+          Alert.alert('Import Failed', 'An error occurred while importing history.');
+        }
+      };
+      input.click();
+    } else {
+      Alert.alert(
+        'Import History',
+        'Document picker is not yet available. Install expo-document-picker to enable JSON import.',
+      );
+    }
+  }, [importSessions]);
 
   const handleClearHistory = useCallback(() => {
     setClearHistoryVisible(true);
@@ -479,6 +571,23 @@ export default function SettingsScreen() {
           value={settings.keepScreenAwake}
           onValueChange={handleKeepAwakeToggle}
         />
+        <Divider />
+        <GetReadySegmentedControl
+          selected={settings.getReadySeconds}
+          onChange={handleGetReadyChange}
+        />
+        <Divider />
+        <ToggleRow
+          label="Reduce motion"
+          value={settings.reduceMotion}
+          onValueChange={handleReduceMotionToggle}
+          accessibilityLabel="Reduce motion"
+        />
+        <View style={styles.hintRow}>
+          <Text style={styles.hintText}>
+            Simplifies workout animations. Also respects system accessibility setting.
+          </Text>
+        </View>
       </View>
 
       {/* ================================================================= */}
@@ -513,6 +622,11 @@ export default function SettingsScreen() {
           label="Export history"
           value="JSON"
           onPress={handleExportHistory}
+        />
+        <Divider />
+        <ActionRow
+          label="Import history"
+          onPress={handleImportHistory}
         />
         <Divider />
         <ActionRow

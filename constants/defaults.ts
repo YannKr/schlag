@@ -98,6 +98,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   beepPitch: 1.0,
   defaultHalfwayAlert: false,
   defaultAnnounceNames: false,
+  getReadySeconds: 3,
+  reduceMotion: false,
 } as const;
 
 // ---------------------------------------------------------------------------

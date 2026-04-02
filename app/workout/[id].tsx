@@ -62,23 +62,104 @@ import type { Interval, TimerTickData, TimelineEntry } from '@/types';
 
 const DARK_BG = APP_COLORS.backgroundDark;
 const LIGHT_BG = '#FFFFFF';
-const INTERVAL_COLOR_TINT_OPACITY = 0.2;
+
+// ---------------------------------------------------------------------------
+// Light theme intensity colors
+// ---------------------------------------------------------------------------
+
+const LIGHT_COOL_BG = '#F8FAFC';
+const LIGHT_HOT_BG = '#FFF5F5';
+const LIGHT_COOL_GLOW = '#93C5FD';
+const LIGHT_HOT_GLOW = '#FCA5A5';
+
+// ---------------------------------------------------------------------------
+// Theme-specific ambient intensity props helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute AmbientBackground props appropriate for the active theme.
+ *
+ * - **Dark**: unchanged (cool #1A1A1A -> hot #2A0A0A).
+ * - **Light**: intensity drives a subtle warm tint over the white background.
+ *   Glow transitions from light blue to light red; opacity range 0.08-0.20.
+ * - **Interval-color**: intensity amplifies the interval color tint.
+ *   Tint opacity scales from 0.15 to 0.40 based on overall intensity.
+ *   Glow color is the current interval color.
+ */
+function getThemeIntensityProps(
+  theme: string,
+  intensity: {
+    colorTemp: { value: number };
+    glowRadius: { value: number };
+    glowOpacity: { value: number };
+    pulse: { value: number };
+    overall: { value: number };
+    isPaused: boolean;
+    act: 'opening' | 'rising' | 'climax' | 'release';
+  },
+  intervalColor: string,
+): {
+  colorTemp: number;
+  glowRadius: number;
+  glowOpacity: number;
+  pulse: number;
+  isPaused: boolean;
+  act: 'opening' | 'rising' | 'climax' | 'release';
+  /** Override background colors for AmbientBackground. */
+  coolBg?: string;
+  hotBg?: string;
+  coolGlow?: string;
+  hotGlow?: string;
+} {
+  switch (theme) {
+    case 'light':
+      return {
+        colorTemp: intensity.colorTemp.value,
+        glowRadius: intensity.glowRadius.value,
+        // Map opacity to the narrower 0.08-0.20 range for light theme.
+        glowOpacity: 0.08 + intensity.glowOpacity.value * 0.12,
+        pulse: intensity.pulse.value,
+        isPaused: intensity.isPaused,
+        act: intensity.act,
+        coolBg: LIGHT_COOL_BG,
+        hotBg: LIGHT_HOT_BG,
+        coolGlow: LIGHT_COOL_GLOW,
+        hotGlow: LIGHT_HOT_GLOW,
+      };
+    case 'interval-color': {
+      // Scale tint opacity from 0.15 to 0.40 based on overall intensity.
+      const scaledOpacity = 0.15 + intensity.overall.value * 0.25;
+      return {
+        colorTemp: intensity.colorTemp.value,
+        glowRadius: intensity.glowRadius.value,
+        glowOpacity: scaledOpacity,
+        pulse: intensity.pulse.value,
+        isPaused: intensity.isPaused,
+        act: intensity.act,
+        // Both cool and hot use the interval color as glow.
+        coolBg: intervalColor,
+        hotBg: intervalColor,
+        coolGlow: intervalColor,
+        hotGlow: intervalColor,
+      };
+    }
+    case 'dark':
+    default:
+      // Dark theme: pass through intensity values unchanged.
+      return {
+        colorTemp: intensity.colorTemp.value,
+        glowRadius: intensity.glowRadius.value,
+        glowOpacity: intensity.glowOpacity.value,
+        pulse: intensity.pulse.value,
+        isPaused: intensity.isPaused,
+        act: intensity.act,
+      };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Blend an interval color with the dark background at the given opacity.
- * Returns an `rgba()` string for use as a tint overlay.
- */
-function hexToRgba(hex: string, alpha: number): string {
-  const sanitized = hex.replace('#', '');
-  const r = parseInt(sanitized.substring(0, 2), 16);
-  const g = parseInt(sanitized.substring(2, 4), 16);
-  const b = parseInt(sanitized.substring(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 /**
  * Build the list of upcoming timeline entries for the expanded view.
@@ -685,6 +766,7 @@ export default function WorkoutScreen() {
 
   // Local state.
   const [showTapToContinue, setShowTapToContinue] = useState(false);
+  const [getReadyRemaining, setGetReadyRemaining] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const hasStartedRef = useRef(false);
   const sequenceRef = useRef(getSequenceById(id ?? ''));
@@ -720,7 +802,13 @@ export default function WorkoutScreen() {
     // Attempt to restore a saved session (process kill recovery), else start fresh.
     timerLoop.restore(sequence).then((restored) => {
       if (!restored) {
-        return timerLoop.start(sequence);
+        // If get-ready countdown is enabled, show it before starting.
+        const readySecs = settings.getReadySeconds;
+        if (readySecs > 0) {
+          setGetReadyRemaining(readySecs);
+        } else {
+          return timerLoop.start(sequence);
+        }
       }
     }).catch(() => {
       setError('Failed to start workout.');
@@ -732,6 +820,30 @@ export default function WorkoutScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // ---------------------------------------------------------------------------
+  // Get-ready countdown: counts down before starting the timer loop
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (getReadyRemaining === null || getReadyRemaining < 0) return;
+
+    if (getReadyRemaining === 0) {
+      // Countdown finished — start the timer.
+      setGetReadyRemaining(null);
+      const sequence = sequenceRef.current;
+      if (sequence) {
+        timerLoop.start(sequence);
+      }
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setGetReadyRemaining((prev) => (prev !== null ? prev - 1 : null));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [getReadyRemaining, timerLoop]);
 
   // ---------------------------------------------------------------------------
   // Sync tick data to the timer store on every update
@@ -918,12 +1030,6 @@ export default function WorkoutScreen() {
       }
     }, [theme, intervalColor]);
 
-  // Dark theme tint overlay color.
-  const tintOverlayColor =
-    theme === 'dark'
-      ? hexToRgba(intervalColor, INTERVAL_COLOR_TINT_OPACITY)
-      : undefined;
-
   // ---------------------------------------------------------------------------
   // Timeline entries for expanded view
   // ---------------------------------------------------------------------------
@@ -969,6 +1075,37 @@ export default function WorkoutScreen() {
             variant="primary"
             style={styles.errorButton}
           />
+        </View>
+      </View>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Get-ready countdown state (before timer starts)
+  // ---------------------------------------------------------------------------
+
+  if (getReadyRemaining !== null && getReadyRemaining > 0) {
+    const sequenceName = sequenceRef.current?.name ?? '';
+    return (
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: DARK_BG, paddingTop: insets.top },
+        ]}
+      >
+        <StatusBar barStyle="light-content" />
+        <AmbientBackground
+          colorTemp={0}
+          glowRadius={60}
+          glowOpacity={0.08}
+          pulse={0.15}
+          isPaused={false}
+          act="opening"
+        />
+        <View style={styles.getReadyContainer}>
+          <Text style={styles.getReadyTitle}>GET READY</Text>
+          <Text style={styles.getReadyCountdown}>{getReadyRemaining}</Text>
+          <Text style={styles.getReadySequenceName}>{sequenceName}</Text>
         </View>
       </View>
     );
@@ -1051,25 +1188,10 @@ export default function WorkoutScreen() {
     >
       <StatusBar barStyle={statusBarStyle} />
 
-      {/* Narrative arc ambient background (replaces old tint overlay on dark theme) */}
-      {theme === 'dark' ? (
-        <AmbientBackground
-          colorTemp={intensity.colorTemp.value}
-          glowRadius={intensity.glowRadius.value}
-          glowOpacity={intensity.glowOpacity.value}
-          pulse={intensity.pulse.value}
-          isPaused={intensity.isPaused}
-          act={intensity.act}
-        />
-      ) : tintOverlayColor ? (
-        <View
-          style={[
-            StyleSheet.absoluteFillObject,
-            { backgroundColor: tintOverlayColor },
-          ]}
-          pointerEvents="none"
-        />
-      ) : null}
+      {/* Narrative arc ambient background — all themes get intensity-driven effects */}
+      <AmbientBackground
+        {...getThemeIntensityProps(theme, intensity, intervalColor)}
+      />
 
       {/* Main content area */}
       <View style={[styles.contentArea, webContainerStyle]}>
@@ -1116,6 +1238,7 @@ export default function WorkoutScreen() {
             glowColor={INTENSITY_COLORS.hot.glow}
             act={intensity.act}
             fontSize={isExpanded ? FONT_SIZE.countdownSmall : FONT_SIZE.countdownMedium}
+            reduceMotion={intensity.reduceMotion}
           />
 
           {/* Progress bar */}
@@ -1513,5 +1636,37 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.bodyLarge,
     fontWeight: FONT_WEIGHT.medium,
     color: APP_COLORS.textOnDark,
+  },
+
+  // Get-ready countdown
+  getReadyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.lg,
+    paddingHorizontal: SPACING.xxl,
+  },
+  getReadyTitle: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.intervalNameLarge,
+    fontWeight: FONT_WEIGHT.bold,
+    color: APP_COLORS.textOnDark,
+    letterSpacing: 4,
+    textAlign: 'center',
+  },
+  getReadyCountdown: {
+    fontFamily: FONT_FAMILY.mono,
+    fontSize: FONT_SIZE.countdownLarge,
+    fontWeight: FONT_WEIGHT.bold,
+    color: APP_COLORS.textOnDark,
+    textAlign: 'center',
+    lineHeight: FONT_SIZE.countdownLarge * LINE_HEIGHT.countdown,
+  },
+  getReadySequenceName: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.bodyLarge,
+    fontWeight: FONT_WEIGHT.medium,
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
   },
 });

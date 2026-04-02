@@ -35,4 +35,10 @@ export interface AppSettings {
 
   /** v2: Default announce interval names for new sequences. */
   defaultAnnounceNames: boolean;
+
+  /** Seconds to count down before the first interval starts. 0 = disabled. */
+  getReadySeconds: number;
+
+  /** When true, disables shader effects and complex animations. Respects system reduce-motion. */
+  reduceMotion: boolean;
 }
