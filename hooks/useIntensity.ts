@@ -18,12 +18,13 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { AccessibilityInfo, Platform } from 'react-native';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { computeIntensity } from '@/lib/intensity';
 import type { Act } from '@/lib/intensity';
 import type { TimerTickData } from '@/types/timer';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,6 +51,9 @@ export interface IntensityValues {
 
   /** Whether the timer is paused — plain JS value, not animated. */
   isPaused: boolean;
+
+  /** Whether reduce-motion is active (app setting or system accessibility). */
+  reduceMotion: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,6 +73,17 @@ const COMPLETION_FADE_MS = 1500;
  * Throttle to ~10Hz on web — CSS transitions handle interpolation.
  */
 const WEB_THROTTLE_MS = Platform.OS === 'web' ? 100 : 0;
+
+/**
+ * When reduce-motion is active (app setting or system accessibility),
+ * clamp shared values to these low constants for a barely-there ambient
+ * effect without shaders, breathing, or scale animations.
+ */
+const REDUCED_OVERALL = 0.1;
+const REDUCED_PULSE = 0.2;
+const REDUCED_COLOR_TEMP = 0;
+const REDUCED_GLOW_RADIUS = 80;
+const REDUCED_GLOW_OPACITY = 0.05;
 
 // ---------------------------------------------------------------------------
 // Hook
@@ -91,6 +106,34 @@ export function useIntensity(tickData: TimerTickData | null): IntensityValues {
 
   const [act, setAct] = useState<Act>('opening');
   const [isPaused, setIsPaused] = useState(false);
+
+  // -----------------------------------------------------------------------
+  // Reduce-motion: app setting + system accessibility preference.
+  // -----------------------------------------------------------------------
+
+  const appReduceMotion = useSettingsStore((s) => s.settings.reduceMotion);
+  const [systemReduceMotion, setSystemReduceMotion] = useState(false);
+
+  useEffect(() => {
+    // Check initial system setting.
+    AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      setSystemReduceMotion(enabled);
+    });
+
+    // Listen for changes while the hook is alive.
+    const subscription = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      (enabled: boolean) => {
+        setSystemReduceMotion(enabled);
+      },
+    );
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  const reduceMotion = appReduceMotion || systemReduceMotion;
 
   // Throttle timestamp for web (skip updates that arrive faster than 10Hz).
   const lastUpdateRef = useRef(0);
@@ -171,16 +214,28 @@ export function useIntensity(tickData: TimerTickData | null): IntensityValues {
       remainingMs: tickData.remainingMs,
     });
 
+    // Act is a discrete label — always update (used for logic even in reduce-motion).
+    setAct(output.act);
+
+    // When reduce-motion is active, clamp visual shared values to low constants
+    // instead of the full intensity engine output. This gives a barely-there
+    // ambient effect without shaders, breathing, or scale animations.
+    if (reduceMotion) {
+      overall.value = REDUCED_OVERALL;
+      pulse.value = REDUCED_PULSE;
+      colorTemp.value = REDUCED_COLOR_TEMP;
+      glowRadius.value = REDUCED_GLOW_RADIUS;
+      glowOpacity.value = REDUCED_GLOW_OPACITY;
+      return;
+    }
+
     // Update shared values with smooth timing to interpolate between ticks.
     overall.value = withTiming(output.overall, { duration: TICK_TRANSITION_MS });
     pulse.value = withTiming(output.pulse, { duration: TICK_TRANSITION_MS });
     colorTemp.value = withTiming(output.colorTemp, { duration: TICK_TRANSITION_MS });
     glowRadius.value = withTiming(output.glowRadius, { duration: TICK_TRANSITION_MS });
     glowOpacity.value = withTiming(output.glowOpacity, { duration: TICK_TRANSITION_MS });
-
-    // Act is a discrete label — no animation needed.
-    setAct(output.act);
-  }, [tickData, overall, pulse, colorTemp, glowRadius, glowOpacity]);
+  }, [tickData, reduceMotion, overall, pulse, colorTemp, glowRadius, glowOpacity]);
 
   // -----------------------------------------------------------------------
   // Return the shared values and plain state for component consumption.
@@ -194,5 +249,6 @@ export function useIntensity(tickData: TimerTickData | null): IntensityValues {
     glowOpacity,
     act,
     isPaused,
+    reduceMotion,
   };
 }

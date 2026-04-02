@@ -38,6 +38,8 @@ export interface AnimatedCountdownProps {
   act: 'opening' | 'rising' | 'climax' | 'release';
   /** Font size override. Defaults to FONT_SIZE.countdownMedium (80). */
   fontSize?: number;
+  /** When true, disables scale animation and haptic feedback. */
+  reduceMotion?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +82,7 @@ export function AnimatedCountdown({
   glowColor,
   act,
   fontSize = FONT_SIZE.countdownMedium,
+  reduceMotion = false,
 }: AnimatedCountdownProps) {
   // -------------------------------------------------------------------------
   // Shared values
@@ -119,12 +122,14 @@ export function AnimatedCountdown({
       ) {
         firedThresholds.current.add(threshold);
 
-        // Pulse: scale up then spring back to 1
-        scale.value = PULSE_SCALE;
-        scale.value = withSpring(1, SPRING_CONFIG);
+        if (!reduceMotion) {
+          // Pulse: scale up then spring back to 1
+          scale.value = PULSE_SCALE;
+          scale.value = withSpring(1, SPRING_CONFIG);
 
-        // Haptic: rigid impact for countdown beats
-        fireHaptic(Haptics.ImpactFeedbackStyle.Rigid);
+          // Haptic: rigid impact for countdown beats
+          fireHaptic(Haptics.ImpactFeedbackStyle.Rigid);
+        }
       }
     }
 
@@ -136,16 +141,18 @@ export function AnimatedCountdown({
     ) {
       firedThresholds.current.add(ZERO_THRESHOLD);
 
-      // Pulse at zero as well
-      scale.value = PULSE_SCALE;
-      scale.value = withSpring(1, SPRING_CONFIG);
+      if (!reduceMotion) {
+        // Pulse at zero as well
+        scale.value = PULSE_SCALE;
+        scale.value = withSpring(1, SPRING_CONFIG);
 
-      // Haptic: heavy impact for interval completion
-      fireHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+        // Haptic: heavy impact for interval completion
+        fireHaptic(Haptics.ImpactFeedbackStyle.Heavy);
+      }
     }
 
     prevRemainingMs.current = remainingMs;
-  }, [remainingMs, scale]);
+  }, [remainingMs, reduceMotion, scale]);
 
   // -------------------------------------------------------------------------
   // Animated styles
