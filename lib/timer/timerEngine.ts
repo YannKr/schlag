@@ -42,8 +42,10 @@ import {
 /** Pre-fire buffer for native audio cues (ms). */
 const AUDIO_PRE_FIRE_MS = 50;
 
-/** Threshold for countdown cue detection (ms tolerance window). */
-const COUNTDOWN_WINDOW_MS = 150;
+/** Threshold for countdown cue detection (ms tolerance window).
+ *  Widened from 150ms to 500ms to handle web tick jitter — if the
+ *  rAF loop lags, we still detect countdown thresholds. */
+const COUNTDOWN_WINDOW_MS = 500;
 
 // ---------------------------------------------------------------------------
 // Helpers

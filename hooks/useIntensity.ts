@@ -17,7 +17,8 @@
  *   - completed      -> act = 'release', overall animates to 0 over 1500ms.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import { useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { computeIntensity } from '@/lib/intensity';
@@ -61,6 +62,14 @@ const TICK_TRANSITION_MS = 150;
 /** Duration for the fade-out animation when the workout completes. */
 const COMPLETION_FADE_MS = 1500;
 
+/**
+ * On web, the tick loop runs at 60Hz via rAF. Updating 5 shared values
+ * every frame (300 withTiming calls/sec) floods the animation scheduler
+ * and blocks the main thread, causing timer skips and Firefox jank.
+ * Throttle to ~10Hz on web — CSS transitions handle interpolation.
+ */
+const WEB_THROTTLE_MS = Platform.OS === 'web' ? 100 : 0;
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -82,6 +91,9 @@ export function useIntensity(tickData: TimerTickData | null): IntensityValues {
 
   const [act, setAct] = useState<Act>('opening');
   const [isPaused, setIsPaused] = useState(false);
+
+  // Throttle timestamp for web (skip updates that arrive faster than 10Hz).
+  const lastUpdateRef = useRef(0);
 
   // -----------------------------------------------------------------------
   // Effect: compute intensity and push to shared values on every tick.
@@ -125,6 +137,29 @@ export function useIntensity(tickData: TimerTickData | null): IntensityValues {
     }
 
     // -- Running / idle: compute and animate ---------------------------
+
+    // On web, throttle shared value updates to ~10Hz to avoid flooding
+    // the animation scheduler. The timer display itself updates at 60Hz
+    // via the normal React state pipeline — only the ambient visual
+    // effects are throttled.
+    if (WEB_THROTTLE_MS > 0) {
+      const now = Date.now();
+      if (now - lastUpdateRef.current < WEB_THROTTLE_MS) {
+        // Still update act (discrete, cheap) but skip shared value animations.
+        const output = computeIntensity({
+          totalIntervals: tickData.totalIntervals,
+          currentIntervalIndex: tickData.currentIntervalIndex,
+          totalRounds: tickData.totalRounds,
+          currentRound: tickData.currentRound,
+          intervalProgress: tickData.progress,
+          isRestBetweenSets: tickData.isRestBetweenSets,
+          remainingMs: tickData.remainingMs,
+        });
+        setAct(output.act);
+        return;
+      }
+      lastUpdateRef.current = now;
+    }
 
     const output = computeIntensity({
       totalIntervals: tickData.totalIntervals,
