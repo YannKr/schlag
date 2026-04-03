@@ -5,7 +5,7 @@ export default defineConfig({
   timeout: 30_000,
   retries: 0,
   use: {
-    baseURL: 'http://localhost:8082',
+    baseURL: 'http://localhost:8081',
     headless: true,
     screenshot: 'only-on-failure',
   },
@@ -16,9 +16,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npx expo start --web --port 8082',
-    url: 'http://localhost:8082',
+    command: 'npx expo start --web --port 8081',
+    url: 'http://localhost:8081',
     reuseExistingServer: true,
-    timeout: 30_000,
+    timeout: 60_000,
   },
 });
