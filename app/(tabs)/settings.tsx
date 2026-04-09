@@ -24,6 +24,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useSequenceStore } from '@/stores/sequenceStore';
 import { useSessionStore } from '@/stores/sessionStore';
 import { useProStore } from '@/stores/proStore';
+import { getStorageUsageBytes } from '@/lib/storage';
 import { APP_COLORS } from '@/constants/colors';
 import { FONT_SIZE, FONT_WEIGHT } from '@/constants/typography';
 import { LAYOUT, SPACING } from '@/constants/layout';
@@ -618,6 +619,17 @@ export default function SettingsScreen() {
       {/* ================================================================= */}
       <SectionHeader title="HISTORY" />
       <View style={styles.section}>
+        {Platform.OS === 'web' && (
+          <>
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Storage used</Text>
+              <Text style={styles.rowValue}>
+                {(getStorageUsageBytes() / (1024 * 1024)).toFixed(1)} MB / 5 MB
+              </Text>
+            </View>
+            <Divider />
+          </>
+        )}
         <ActionRow
           label="Export history"
           value="JSON"

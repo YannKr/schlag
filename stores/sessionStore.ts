@@ -22,6 +22,7 @@ export interface SessionStore {
 
   // Lifecycle
   loadFromStorage: () => void;
+  pruneOldSessions: () => void;
 
   // Start a new session (called when workout begins). Returns session ID.
   startSession: (sequence: Sequence) => string;
@@ -161,6 +162,38 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   loadFromStorage: () => {
     const sessions = getSessions();
     set({ sessions, isLoaded: true });
+    // Auto-prune on load to keep storage bounded.
+    get().pruneOldSessions();
+  },
+
+  pruneOldSessions: () => {
+    const SOFT_DELETE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days
+    const SNAPSHOT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;     // 90 days
+    const cutoff = Date.now();
+
+    set((state) => {
+      let changed = false;
+      const sessions = state.sessions
+        .filter((s) => {
+          if (!s.deleted_at) return true;
+          const expired = cutoff - new Date(s.deleted_at).getTime() >= SOFT_DELETE_RETENTION_MS;
+          if (expired) changed = true;
+          return !expired;
+        })
+        .map((s) => {
+          if (s.sequence_snapshot && cutoff - new Date(s.created_at).getTime() >= SNAPSHOT_RETENTION_MS) {
+            changed = true;
+            return { ...s, sequence_snapshot: null };
+          }
+          return s;
+        });
+
+      // Only write to storage if something actually changed.
+      if (changed) {
+        return { sessions: persist(sessions) };
+      }
+      return {};
+    });
   },
 
   // -------------------------------------------------------------------------

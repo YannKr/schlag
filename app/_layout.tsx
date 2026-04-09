@@ -4,9 +4,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { StyleSheet } from 'react-native';
+import { Alert, Platform, StyleSheet } from 'react-native';
 
-import { getTimerSession, clearTimerSession, getSequences, requestPersistentStorage } from '@/lib/storage';
+import { getTimerSession, clearTimerSession, getSequences, requestPersistentStorage, setStorageErrorHandler } from '@/lib/storage';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -28,8 +28,17 @@ export default function RootLayout() {
   }, [fontsLoaded]);
 
   // Ask the browser to keep localStorage data permanently (prevents Firefox eviction).
+  // Show an alert if any storage write fails (quota exceeded, etc.).
   useEffect(() => {
     requestPersistentStorage();
+    setStorageErrorHandler(({ message }) => {
+      const text = `Could not save: ${message}. Your data may not persist.`;
+      if (Platform.OS === 'web') {
+        window.alert(text);
+      } else {
+        Alert.alert('Storage Error', text);
+      }
+    });
   }, []);
 
   // Check for a saved timer session on cold start and auto-navigate.

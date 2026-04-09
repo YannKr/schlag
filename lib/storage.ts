@@ -39,6 +39,18 @@ export const storage = createMMKV({
 });
 
 // ---------------------------------------------------------------------------
+// Storage error callback
+// ---------------------------------------------------------------------------
+
+type StorageErrorHandler = (error: { key: string; message: string }) => void;
+let onStorageError: StorageErrorHandler | null = null;
+
+/** Register a callback invoked when a storage write fails (quota exceeded, etc.). */
+export function setStorageErrorHandler(handler: StorageErrorHandler): void {
+  onStorageError = handler;
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 
@@ -52,8 +64,16 @@ function getJSON<T>(key: string): T | null {
   }
 }
 
-function setJSON<T>(key: string, value: T): void {
-  storage.set(key, JSON.stringify(value));
+function setJSON<T>(key: string, value: T): boolean {
+  try {
+    storage.set(key, JSON.stringify(value));
+    return true;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Storage write failed';
+    console.error(`[Schlag] Storage write failed for ${key}:`, err);
+    onStorageError?.({ key, message });
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -64,8 +84,8 @@ export function getSequences(): Sequence[] {
   return getJSON<Sequence[]>(KEYS.SEQUENCES) ?? [];
 }
 
-export function saveSequences(sequences: Sequence[]): void {
-  setJSON(KEYS.SEQUENCES, sequences);
+export function saveSequences(sequences: Sequence[]): boolean {
+  return setJSON(KEYS.SEQUENCES, sequences);
 }
 
 // ---------------------------------------------------------------------------
@@ -79,8 +99,8 @@ export function getSettings(): AppSettings {
   return { ...DEFAULT_SETTINGS, ...stored };
 }
 
-export function saveSettings(settings: AppSettings): void {
-  setJSON(KEYS.SETTINGS, settings);
+export function saveSettings(settings: AppSettings): boolean {
+  return setJSON(KEYS.SETTINGS, settings);
 }
 
 // ---------------------------------------------------------------------------
@@ -91,8 +111,8 @@ export function getTimerSession(): TimerSession | null {
   return getJSON<TimerSession>(KEYS.TIMER_SESSION);
 }
 
-export function saveTimerSession(session: TimerSession): void {
-  setJSON(KEYS.TIMER_SESSION, session);
+export function saveTimerSession(session: TimerSession): boolean {
+  return setJSON(KEYS.TIMER_SESSION, session);
 }
 
 export function clearTimerSession(): void {
@@ -107,8 +127,8 @@ export function getSessions(): WorkoutSession[] {
   return getJSON<WorkoutSession[]>(KEYS.SESSIONS) ?? [];
 }
 
-export function saveSessions(sessions: WorkoutSession[]): void {
-  setJSON(KEYS.SESSIONS, sessions);
+export function saveSessions(sessions: WorkoutSession[]): boolean {
+  return setJSON(KEYS.SESSIONS, sessions);
 }
 
 // ---------------------------------------------------------------------------
@@ -121,8 +141,24 @@ export function getProStatus(): ProStatus {
   return { ...DEFAULT_PRO_STATUS, ...stored };
 }
 
-export function saveProStatus(status: ProStatus): void {
-  setJSON(KEYS.PRO_STATUS, status);
+export function saveProStatus(status: ProStatus): boolean {
+  return setJSON(KEYS.PRO_STATUS, status);
+}
+
+// ---------------------------------------------------------------------------
+// Storage usage (web)
+// ---------------------------------------------------------------------------
+
+/** Estimate bytes used by this app's keys in localStorage. Returns 0 on native. */
+export function getStorageUsageBytes(): number {
+  if (Platform.OS !== 'web') return 0;
+  let total = 0;
+  for (const key of storage.getAllKeys()) {
+    const val = storage.getString(key);
+    if (val) total += key.length + val.length;
+  }
+  // JS strings are UTF-16: 2 bytes per character
+  return total * 2;
 }
 
 // ---------------------------------------------------------------------------

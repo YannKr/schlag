@@ -24,8 +24,8 @@ export interface WorkoutSession {
   /** ID of the sequence that was run. */
   sequence_id: string;
 
-  /** Frozen copy of the sequence at workout start (edits don't alter history). */
-  sequence_snapshot: Sequence;
+  /** Frozen copy of the sequence at workout start. Null for old sessions where snapshot was pruned. */
+  sequence_snapshot: Sequence | null;
 
   /** ISO 8601 timestamp when the workout started. */
   started_at: string;
