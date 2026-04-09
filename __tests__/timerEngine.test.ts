@@ -954,6 +954,75 @@ describe('Audio cue detection (getAudioCuesToFire)', () => {
 
     expect(firedTones).toEqual(['countdown3', 'countdown2', 'countdown1']);
   });
+
+  // Regression tests: no beeps during rest-between-sets intervals
+  it('does NOT fire countdown beeps during rest-between-sets', () => {
+    const seq = makeSequence({
+      repeat_count: 2,
+      rest_between_sets_seconds: 10,
+      auto_advance: true,
+      intervals: [makeInterval({ duration_seconds: 5 })],
+    });
+    engine.startWorkout(seq);
+
+    // Complete the first interval to enter rest.
+    advanceTime(5000);
+    const tick = engine.tick()!;
+    expect(tick.isRestBetweenSets).toBe(true);
+
+    // During rest, countdown beeps should NOT fire.
+    const cuesAtStart = engine.getAudioCuesToFire(10_000);
+    expect(cuesAtStart).not.toContain('intervalStart');
+
+    const cuesAt3 = engine.getAudioCuesToFire(3000);
+    expect(cuesAt3).not.toContain('countdown3');
+
+    const cuesAt2 = engine.getAudioCuesToFire(2000);
+    expect(cuesAt2).not.toContain('countdown2');
+
+    const cuesAt1 = engine.getAudioCuesToFire(1000);
+    expect(cuesAt1).not.toContain('countdown1');
+  });
+
+  it('does NOT fire halfway cue during rest-between-sets', () => {
+    const seq = makeSequence({
+      repeat_count: 2,
+      rest_between_sets_seconds: 20,
+      auto_advance: true,
+      intervals: [makeInterval({ duration_seconds: 5 })],
+    });
+    engine.startWorkout(seq);
+
+    // Complete the first interval to enter rest.
+    advanceTime(5000);
+    const tick = engine.tick()!;
+    expect(tick.isRestBetweenSets).toBe(true);
+
+    // Halfway through 20s rest = 10s remaining. Should NOT fire halfway cue.
+    engine.getAudioCuesToFire(20_000); // first tick
+    const cues = engine.getAudioCuesToFire(10_000);
+    expect(cues).not.toContain('halfway');
+  });
+
+  it('still fires intervalEnd when rest-between-sets ends', () => {
+    const seq = makeSequence({
+      repeat_count: 2,
+      rest_between_sets_seconds: 5,
+      auto_advance: true,
+      intervals: [makeInterval({ duration_seconds: 5 })],
+    });
+    engine.startWorkout(seq);
+
+    // Complete the first interval to enter rest.
+    advanceTime(5000);
+    const tick = engine.tick()!;
+    expect(tick.isRestBetweenSets).toBe(true);
+
+    // At T=0 of rest, intervalEnd should still fire (signals transition back).
+    engine.getAudioCuesToFire(5000); // first rest tick (no intervalStart)
+    const cues = engine.getAudioCuesToFire(30); // near T=0
+    expect(cues).toContain('intervalEnd');
+  });
 });
 
 // ===========================================================================

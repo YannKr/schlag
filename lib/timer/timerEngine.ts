@@ -270,49 +270,57 @@ export class TimerEngine {
     const prefix = `r${round}-i${idx}-rest${isRest}`;
 
     // Interval start cue: fired when interval begins (remaining close to full duration).
-    const startKey = `${prefix}-start`;
-    if (!this.firedCues.has(startKey)) {
-      // Fire on the first tick of a new interval.
-      this.firedCues.add(startKey);
-      cues.push('intervalStart');
+    // Skip for rest-between-sets intervals — rest should be silent.
+    if (!isRest) {
+      const startKey = `${prefix}-start`;
+      if (!this.firedCues.has(startKey)) {
+        // Fire on the first tick of a new interval.
+        this.firedCues.add(startKey);
+        cues.push('intervalStart');
+      }
     }
 
     // Countdown cues at T-3, T-2, T-1 seconds.
     // Adjusted by AUDIO_PRE_FIRE_MS for native scheduling latency.
+    // Skip during rest-between-sets intervals.
     const adjustedRemaining = remainingMs - AUDIO_PRE_FIRE_MS;
 
-    for (const sec of [3, 2, 1] as const) {
-      const thresholdMs = sec * 1000;
-      const cueKey = `${prefix}-cd${sec}`;
+    if (!isRest) {
+      for (const sec of [3, 2, 1] as const) {
+        const thresholdMs = sec * 1000;
+        const cueKey = `${prefix}-cd${sec}`;
 
-      if (
-        !this.firedCues.has(cueKey) &&
-        adjustedRemaining <= thresholdMs &&
-        adjustedRemaining > thresholdMs - COUNTDOWN_WINDOW_MS - AUDIO_PRE_FIRE_MS
-      ) {
-        this.firedCues.add(cueKey);
-        const toneMap: Record<number, ToneName> = {
-          3: 'countdown3',
-          2: 'countdown2',
-          1: 'countdown1',
-        };
-        cues.push(toneMap[sec]);
+        if (
+          !this.firedCues.has(cueKey) &&
+          adjustedRemaining <= thresholdMs &&
+          adjustedRemaining > thresholdMs - COUNTDOWN_WINDOW_MS - AUDIO_PRE_FIRE_MS
+        ) {
+          this.firedCues.add(cueKey);
+          const toneMap: Record<number, ToneName> = {
+            3: 'countdown3',
+            2: 'countdown2',
+            1: 'countdown1',
+          };
+          cues.push(toneMap[sec]);
+        }
       }
     }
 
     // v2: Halfway cue — fires when remaining crosses the halfway point.
-    // Only for intervals >= 10 seconds.
-    const currentInterval = this.getCurrentInterval();
-    const halfwayMs = (currentInterval.duration_seconds * 1000) / 2;
-    if (currentInterval.duration_seconds >= 10) {
-      const halfwayKey = `${prefix}-halfway`;
-      if (
-        !this.firedCues.has(halfwayKey) &&
-        adjustedRemaining <= halfwayMs &&
-        adjustedRemaining > halfwayMs - COUNTDOWN_WINDOW_MS - AUDIO_PRE_FIRE_MS
-      ) {
-        this.firedCues.add(halfwayKey);
-        cues.push('halfway');
+    // Only for intervals >= 10 seconds. Skip during rest.
+    if (!isRest) {
+      const currentInterval = this.getCurrentInterval();
+      const halfwayMs = (currentInterval.duration_seconds * 1000) / 2;
+      if (currentInterval.duration_seconds >= 10) {
+        const halfwayKey = `${prefix}-halfway`;
+        if (
+          !this.firedCues.has(halfwayKey) &&
+          adjustedRemaining <= halfwayMs &&
+          adjustedRemaining > halfwayMs - COUNTDOWN_WINDOW_MS - AUDIO_PRE_FIRE_MS
+        ) {
+          this.firedCues.add(halfwayKey);
+          cues.push('halfway');
+        }
       }
     }
 
