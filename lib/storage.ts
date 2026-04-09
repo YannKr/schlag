@@ -3,12 +3,13 @@
  *
  * Provides typed helpers for persisting sequences, settings, timer sessions,
  * and auth tokens. MMKV v4 supports both native (iOS/Android) and web
- * (IndexedDB) out of the box.
+ * (localStorage) out of the box.
  *
  * All read helpers return sensible defaults when a key does not exist,
  * so callers never have to handle `undefined` storage values.
  */
 
+import { Platform } from 'react-native';
 import { createMMKV } from 'react-native-mmkv';
 import type { Sequence } from '@/types/sequence';
 import type { AppSettings } from '@/types/settings';
@@ -122,4 +123,26 @@ export function getProStatus(): ProStatus {
 
 export function saveProStatus(status: ProStatus): void {
   setJSON(KEYS.PRO_STATUS, status);
+}
+
+// ---------------------------------------------------------------------------
+// Persistent storage (web)
+// ---------------------------------------------------------------------------
+
+/**
+ * Request the browser to mark this origin's storage as persistent so it
+ * won't be evicted under storage pressure. Firefox uses "best-effort" by
+ * default and can silently delete localStorage data days after last visit.
+ *
+ * No-op on native platforms (MMKV uses file-based storage there).
+ * Returns true when storage is (or was already) persistent.
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  if (Platform.OS !== 'web') return true;
+  if (!navigator.storage?.persist) return false;
+
+  const alreadyPersisted = await navigator.storage.persisted();
+  if (alreadyPersisted) return true;
+
+  return navigator.storage.persist();
 }

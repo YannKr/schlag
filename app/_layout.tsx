@@ -6,7 +6,7 @@ import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StyleSheet } from 'react-native';
 
-import { getTimerSession, clearTimerSession, getSequences } from '@/lib/storage';
+import { getTimerSession, clearTimerSession, getSequences, requestPersistentStorage } from '@/lib/storage';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,6 +26,11 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
+
+  // Ask the browser to keep localStorage data permanently (prevents Firefox eviction).
+  useEffect(() => {
+    requestPersistentStorage();
+  }, []);
 
   // Check for a saved timer session on cold start and auto-navigate.
   useEffect(() => {
