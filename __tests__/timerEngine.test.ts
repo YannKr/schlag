@@ -955,8 +955,8 @@ describe('Audio cue detection (getAudioCuesToFire)', () => {
     expect(firedTones).toEqual(['countdown3', 'countdown2', 'countdown1']);
   });
 
-  // Regression tests: no beeps during rest-between-sets intervals
-  it('does NOT fire countdown beeps during rest-between-sets', () => {
+  // Regression tests: rest-between-sets audio behavior
+  it('does NOT fire intervalStart during rest-between-sets', () => {
     const seq = makeSequence({
       repeat_count: 2,
       rest_between_sets_seconds: 10,
@@ -970,18 +970,36 @@ describe('Audio cue detection (getAudioCuesToFire)', () => {
     const tick = engine.tick()!;
     expect(tick.isRestBetweenSets).toBe(true);
 
-    // During rest, countdown beeps should NOT fire.
+    // Rest should NOT get an intervalStart beep.
     const cuesAtStart = engine.getAudioCuesToFire(10_000);
     expect(cuesAtStart).not.toContain('intervalStart');
+  });
+
+  it('DOES fire countdown beeps during rest to warn of upcoming interval', () => {
+    const seq = makeSequence({
+      repeat_count: 2,
+      rest_between_sets_seconds: 10,
+      auto_advance: true,
+      intervals: [makeInterval({ duration_seconds: 5 })],
+    });
+    engine.startWorkout(seq);
+
+    // Complete the first interval to enter rest.
+    advanceTime(5000);
+    const tick = engine.tick()!;
+    expect(tick.isRestBetweenSets).toBe(true);
+
+    // Countdown beeps SHOULD fire during rest (warn that rest is ending).
+    engine.getAudioCuesToFire(10_000); // first tick (no intervalStart)
 
     const cuesAt3 = engine.getAudioCuesToFire(3000);
-    expect(cuesAt3).not.toContain('countdown3');
+    expect(cuesAt3).toContain('countdown3');
 
     const cuesAt2 = engine.getAudioCuesToFire(2000);
-    expect(cuesAt2).not.toContain('countdown2');
+    expect(cuesAt2).toContain('countdown2');
 
     const cuesAt1 = engine.getAudioCuesToFire(1000);
-    expect(cuesAt1).not.toContain('countdown1');
+    expect(cuesAt1).toContain('countdown1');
   });
 
   it('does NOT fire halfway cue during rest-between-sets', () => {

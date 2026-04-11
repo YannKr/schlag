@@ -282,27 +282,26 @@ export class TimerEngine {
 
     // Countdown cues at T-3, T-2, T-1 seconds.
     // Adjusted by AUDIO_PRE_FIRE_MS for native scheduling latency.
-    // Skip during rest-between-sets intervals.
+    // These fire for BOTH work and rest intervals — during rest they
+    // warn the user that the next work interval is about to start.
     const adjustedRemaining = remainingMs - AUDIO_PRE_FIRE_MS;
 
-    if (!isRest) {
-      for (const sec of [3, 2, 1] as const) {
-        const thresholdMs = sec * 1000;
-        const cueKey = `${prefix}-cd${sec}`;
+    for (const sec of [3, 2, 1] as const) {
+      const thresholdMs = sec * 1000;
+      const cueKey = `${prefix}-cd${sec}`;
 
-        if (
-          !this.firedCues.has(cueKey) &&
-          adjustedRemaining <= thresholdMs &&
-          adjustedRemaining > thresholdMs - COUNTDOWN_WINDOW_MS - AUDIO_PRE_FIRE_MS
-        ) {
-          this.firedCues.add(cueKey);
-          const toneMap: Record<number, ToneName> = {
-            3: 'countdown3',
-            2: 'countdown2',
-            1: 'countdown1',
-          };
-          cues.push(toneMap[sec]);
-        }
+      if (
+        !this.firedCues.has(cueKey) &&
+        adjustedRemaining <= thresholdMs &&
+        adjustedRemaining > thresholdMs - COUNTDOWN_WINDOW_MS - AUDIO_PRE_FIRE_MS
+      ) {
+        this.firedCues.add(cueKey);
+        const toneMap: Record<number, ToneName> = {
+          3: 'countdown3',
+          2: 'countdown2',
+          1: 'countdown1',
+        };
+        cues.push(toneMap[sec]);
       }
     }
 
