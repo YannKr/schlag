@@ -181,7 +181,17 @@ export function useTimerLoop(): UseTimerLoopReturn {
     if (data.status === 'running') {
       const cues = engine.getAudioCuesToFire(data.remainingMs);
       if (cues.length > 0) {
-        dispatchAudioCues(cues, sequenceRef.current);
+        // During rest, suppress the intervalEnd double-beep (the voice
+        // announcement still fires below). This prevents a burst of
+        // beeps at the rest-to-work transition.
+        if (data.isRestBetweenSets) {
+          const filtered = cues.filter((c) => c !== 'intervalEnd');
+          if (filtered.length > 0) {
+            dispatchAudioCues(filtered, sequenceRef.current);
+          }
+        } else {
+          dispatchAudioCues(cues, sequenceRef.current);
+        }
       }
 
       // Speak next interval name when the interval-end cue fires.
