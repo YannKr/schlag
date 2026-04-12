@@ -4,8 +4,8 @@ interface CameraPreviewProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   isTracking: boolean;
   showNoPoseHint: boolean;
-  repCount: number;
   visible: boolean;
+  isMirrored?: boolean;
 }
 
 export function CameraPreview(_props: CameraPreviewProps) {

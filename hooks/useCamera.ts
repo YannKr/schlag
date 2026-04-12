@@ -5,6 +5,7 @@ import type { NormalizedLandmark } from '@/lib/repTracking/types';
 
 export interface UseCameraWebOptions {
   enabled: boolean;
+  processing: boolean;
   facingMode: 'user' | 'environment';
   onLandmarks: (landmarks: NormalizedLandmark[]) => void;
 }

@@ -1206,8 +1206,8 @@ export default function WorkoutScreen() {
           videoRef={repTracking.videoRef}
           isTracking={repTracking.isTracking}
           showNoPoseHint={repTracking.showNoPoseHint}
-          repCount={repTracking.repCount}
           visible={settings.cameraEnabled && settings.showCameraPreview && !!tickData?.currentInterval?.exercise_type && !tickData?.isRestBetweenSets}
+          isMirrored={settings.cameraPosition === 'front'}
         />
         {/* Top section: round + interval indicators */}
         <View style={styles.topSection}>

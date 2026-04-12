@@ -39,7 +39,8 @@ export function useRepTracking(
   const isWeb = Platform.OS === 'web';
   const exerciseType = tickData?.currentInterval?.exercise_type as ExerciseType | undefined;
   const isRestInterval = tickData?.isRestBetweenSets ?? true;
-  const shouldTrack = isWeb && settings.cameraEnabled && !!exerciseType && !isRestInterval && tickData?.status === 'running';
+  const shouldStream = isWeb && settings.cameraEnabled && !!exerciseType && !isRestInterval;
+  const shouldProcess = shouldStream && tickData?.status === 'running';
 
   // Reset counter on interval change
   useEffect(() => {
@@ -75,8 +76,10 @@ export function useRepTracking(
       hadPoseRef.current = true;
       noPoseTimerRef.current = 0;
       setShowNoPoseHint(false);
-    } else if (hadPoseRef.current || noPoseTimerRef.current === 0) {
-      noPoseTimerRef.current = noPoseTimerRef.current || Date.now();
+    } else {
+      if (noPoseTimerRef.current === 0) {
+        noPoseTimerRef.current = Date.now();
+      }
       if (Date.now() - noPoseTimerRef.current > NO_POSE_HINT_THRESHOLD_MS) {
         setShowNoPoseHint(true);
       }
@@ -85,7 +88,8 @@ export function useRepTracking(
 
   // Camera hook
   const { videoRef, isReady, error: cameraError } = useCameraWeb({
-    enabled: shouldTrack,
+    enabled: shouldStream,
+    processing: shouldProcess,
     facingMode: settings.cameraPosition === 'back' ? 'environment' : 'user',
     onLandmarks,
   });

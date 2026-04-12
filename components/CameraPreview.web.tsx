@@ -5,16 +5,16 @@ interface CameraPreviewProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   isTracking: boolean;
   showNoPoseHint: boolean;
-  repCount: number;
   visible: boolean;
+  isMirrored?: boolean;
 }
 
 export function CameraPreview({
   videoRef,
   isTracking,
   showNoPoseHint,
-  repCount,
   visible,
+  isMirrored,
 }: CameraPreviewProps) {
   if (!visible) return null;
 
@@ -27,7 +27,7 @@ export function CameraPreview({
           height: '100%',
           objectFit: 'cover',
           borderRadius: 12,
-          transform: 'scaleX(-1)',
+          transform: isMirrored !== false ? 'scaleX(-1)' : 'none',
         }}
         playsInline
         muted
@@ -38,7 +38,7 @@ export function CameraPreview({
           {showNoPoseHint
             ? 'Position camera'
             : isTracking
-              ? `${repCount} reps`
+              ? 'Tracking'
               : 'Starting...'}
         </Text>
       </View>

@@ -15,6 +15,8 @@ export function calculateAngle(
   const magBA = Math.sqrt(bax * bax + bay * bay);
   const magBC = Math.sqrt(bcx * bcx + bcy * bcy);
 
+  if (magBA === 0 || magBC === 0) return 0; // coincident points
+
   // Clamp to [-1, 1] to guard against floating-point drift
   const cosAngle = Math.max(-1, Math.min(1, dot / (magBA * magBC)));
   return Math.acos(cosAngle) * (180 / Math.PI);

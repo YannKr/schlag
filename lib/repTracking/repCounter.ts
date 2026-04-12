@@ -4,6 +4,7 @@ import type { ExerciseProfile, NormalizedLandmark, RepPhase, RepState } from './
 const MIN_VISIBILITY = 0.7;
 const SMOOTHING_WINDOW = 5;
 const RECOVERY_FRAMES = 3;
+const LOST_TRACKING_THRESHOLD = 3;
 
 export class RepCounter {
   private profile: ExerciseProfile;
@@ -23,7 +24,7 @@ export class RepCounter {
     if (!this.areJointsVisible(landmarks)) {
       this.lowConfidenceFrames++;
       this.highConfidenceStreak = 0;
-      if (this.lowConfidenceFrames > 0) this.lostTracking = true;
+      if (this.lowConfidenceFrames >= LOST_TRACKING_THRESHOLD) this.lostTracking = true;
       return this.getState();
     }
 
@@ -32,7 +33,10 @@ export class RepCounter {
     if (this.lostTracking && this.highConfidenceStreak < RECOVERY_FRAMES) {
       return this.getState();
     }
-    this.lostTracking = false;
+    if (this.lostTracking) {
+      this.lostTracking = false;
+      this.angleBuffer = []; // Clear stale pre-dropout angles
+    }
     this.lowConfidenceFrames = 0;
 
     // 3. Compute angle, add to smoothing buffer
@@ -73,12 +77,18 @@ export class RepCounter {
 
   private areJointsVisible(landmarks: NormalizedLandmark[]): boolean {
     for (const joint of this.profile.trackedJoints) {
+      const maxIdx = Math.max(joint.pointA, joint.pointB, joint.pointC);
+      if (maxIdx >= landmarks.length) return false;
       if (
         landmarks[joint.pointA].visibility < MIN_VISIBILITY ||
         landmarks[joint.pointB].visibility < MIN_VISIBILITY ||
         landmarks[joint.pointC].visibility < MIN_VISIBILITY
       ) {
         return false;
+      }
+      // Also check for NaN/Infinity coordinates
+      for (const idx of [joint.pointA, joint.pointB, joint.pointC]) {
+        if (!isFinite(landmarks[idx].x) || !isFinite(landmarks[idx].y)) return false;
       }
     }
     return true;

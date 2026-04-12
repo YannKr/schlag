@@ -10,8 +10,14 @@ import type { NormalizedLandmark } from '@/lib/repTracking/types';
 
 const FRAME_INTERVAL_MS = 1000 / 15; // 15fps
 
+const WASM_URL =
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm';
+const MODEL_URL =
+  'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+
 export interface UseCameraWebOptions {
   enabled: boolean;
+  processing: boolean;
   facingMode: 'user' | 'environment';
   onLandmarks: (landmarks: NormalizedLandmark[]) => void;
 }
@@ -24,6 +30,7 @@ export interface UseCameraWebReturn {
 
 export function useCameraWeb({
   enabled,
+  processing,
   facingMode,
   onLandmarks,
 }: UseCameraWebOptions): UseCameraWebReturn {
@@ -35,23 +42,32 @@ export function useCameraWeb({
   const [error, setError] = useState<string | null>(null);
   const onLandmarksRef = useRef(onLandmarks);
   onLandmarksRef.current = onLandmarks;
+  const processingRef = useRef(processing);
+  processingRef.current = processing;
+  const activeStreamRef = useRef<MediaStream | null>(null);
 
   const initLandmarker = useCallback(async () => {
     try {
-      const vision = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
-      );
-      const landmarker = await PoseLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath:
-            'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
-          delegate: 'GPU',
-        },
-        runningMode: 'VIDEO',
-        numPoses: 1,
-      });
-      landmarkerRef.current = landmarker;
-      return landmarker;
+      const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+      try {
+        // Try GPU first
+        const landmarker = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+          runningMode: 'VIDEO',
+          numPoses: 1,
+        });
+        landmarkerRef.current = landmarker;
+        return landmarker;
+      } catch {
+        // Fallback to CPU
+        const landmarker = await PoseLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
+          runningMode: 'VIDEO',
+          numPoses: 1,
+        });
+        landmarkerRef.current = landmarker;
+        return landmarker;
+      }
     } catch (e) {
       setError('Rep tracking unavailable: model failed to load.');
       return null;
@@ -61,8 +77,11 @@ export function useCameraWeb({
   useEffect(() => {
     if (!enabled) {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (activeStreamRef.current) {
+        activeStreamRef.current.getTracks().forEach(t => t.stop());
+        activeStreamRef.current = null;
+      }
       if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
         videoRef.current.srcObject = null;
       }
       if (landmarkerRef.current) {
@@ -81,10 +100,11 @@ export function useCameraWeb({
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
         });
-        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        activeStreamRef.current = stream;
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); activeStreamRef.current = null; return; }
 
         const video = videoRef.current;
-        if (!video) return;
+        if (!video) { stream.getTracks().forEach(t => t.stop()); activeStreamRef.current = null; return; }
         video.srcObject = stream;
         await video.play();
 
@@ -95,6 +115,8 @@ export function useCameraWeb({
         function processFrame() {
           if (cancelled) return;
           animFrameRef.current = requestAnimationFrame(processFrame);
+
+          if (!processingRef.current) return;
 
           const now = performance.now();
           if (now - lastProcessedRef.current < FRAME_INTERVAL_MS) return;
@@ -132,8 +154,9 @@ export function useCameraWeb({
     return () => {
       cancelled = true;
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (videoRef.current?.srcObject) {
-        (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      if (activeStreamRef.current) {
+        activeStreamRef.current.getTracks().forEach(t => t.stop());
+        activeStreamRef.current = null;
       }
       if (landmarkerRef.current) {
         landmarkerRef.current.close();

@@ -271,28 +271,30 @@ export function IntervalEditSheet({
                 />
               </View>
 
-              {/* Exercise Type (for camera rep tracking) */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Rep Tracking</Text>
-                <Pressable
-                  style={styles.exerciseTypeButton}
-                  onPress={() => setShowExercisePicker(true)}
-                >
-                  <Text style={styles.exerciseTypeText}>
-                    {exerciseType
-                      ? getProfileByType(exerciseType)?.displayName ?? exerciseType
-                      : 'No tracking'}
-                  </Text>
-                  <Text style={styles.exerciseTypeChevron}>›</Text>
-                </Pressable>
+              {/* Exercise Type (for camera rep tracking) — web only */}
+              {Platform.OS === 'web' && (
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Rep Tracking</Text>
+                  <Pressable
+                    style={styles.exerciseTypeButton}
+                    onPress={() => setShowExercisePicker(true)}
+                  >
+                    <Text style={styles.exerciseTypeText}>
+                      {exerciseType
+                        ? getProfileByType(exerciseType)?.displayName ?? exerciseType
+                        : 'No tracking'}
+                    </Text>
+                    <Text style={styles.exerciseTypeChevron}>›</Text>
+                  </Pressable>
 
-                <ExerciseTypePicker
-                  visible={showExercisePicker}
-                  selected={exerciseType}
-                  onSelect={setExerciseType}
-                  onClose={() => setShowExercisePicker(false)}
-                />
-              </View>
+                  <ExerciseTypePicker
+                    visible={showExercisePicker}
+                    selected={exerciseType}
+                    onSelect={setExerciseType}
+                    onClose={() => setShowExercisePicker(false)}
+                  />
+                </View>
+              )}
 
               {/* Note / Cue */}
               <View style={styles.fieldGroup}>
