@@ -100,6 +100,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultAnnounceNames: false,
   getReadySeconds: 3,
   reduceMotion: false,
+  cameraEnabled: false,
+  cameraPosition: 'front' as const,
+  showCameraPreview: true,
 } as const;
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,5 @@
-export type ExerciseType = 'squat' | 'deadlift' | 'bench' | 'curl' | 'overhead_press' | 'row';
+import type { ExerciseType } from '@/types/interval';
+export type { ExerciseType };
 export type LandmarkIndex = number;
 
 export interface JointAngle {
