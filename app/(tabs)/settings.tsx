@@ -358,6 +358,19 @@ export default function SettingsScreen() {
   );
 
   // -----------------------------------------------------------------------
+  // Camera handlers (web-only)
+  // -----------------------------------------------------------------------
+
+  const handleCameraToggle = useCallback(
+    (val: boolean) => updateSetting('cameraEnabled', val),
+    [updateSetting],
+  );
+  const handleCameraPreviewToggle = useCallback(
+    (val: boolean) => updateSetting('showCameraPreview', val),
+    [updateSetting],
+  );
+
+  // -----------------------------------------------------------------------
   // Sequences handlers
   // -----------------------------------------------------------------------
 
@@ -590,6 +603,34 @@ export default function SettingsScreen() {
           </Text>
         </View>
       </View>
+
+      {/* ================================================================= */}
+      {/* CAMERA REP TRACKING (web-only)                                   */}
+      {/* ================================================================= */}
+      {Platform.OS === 'web' && (
+        <>
+          <SectionHeader title="CAMERA REP TRACKING" />
+          <View style={styles.section}>
+            <ToggleRow
+              label="Enable Camera"
+              value={settings.cameraEnabled}
+              onValueChange={handleCameraToggle}
+              accessibilityLabel="Enable camera for rep tracking"
+            />
+            {settings.cameraEnabled && (
+              <>
+                <Divider />
+                <ToggleRow
+                  label="Show Camera Preview"
+                  value={settings.showCameraPreview}
+                  onValueChange={handleCameraPreviewToggle}
+                  accessibilityLabel="Display camera feed on workout screen"
+                />
+              </>
+            )}
+          </View>
+        </>
+      )}
 
       {/* ================================================================= */}
       {/* SEQUENCES */}
