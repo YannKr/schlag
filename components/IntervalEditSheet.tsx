@@ -33,7 +33,10 @@ import {
   INTERVAL_DURATION_MAX_SECONDS,
 } from '@/constants/validation';
 import { ColorPicker } from '@/components/ColorPicker';
+import { ExerciseTypePicker } from '@/components/ExerciseTypePicker';
 import type { Interval } from '@/types';
+import type { ExerciseType } from '@/types/interval';
+import { getProfileByType } from '@/lib/repTracking/exerciseProfiles';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,6 +88,10 @@ export function IntervalEditSheet({
   const [seconds, setSeconds] = useState('0');
   const [color, setColor] = useState('#E63946');
   const [note, setNote] = useState('');
+  const [exerciseType, setExerciseType] = useState<ExerciseType | null | undefined>(
+    interval?.exercise_type ?? null,
+  );
+  const [showExercisePicker, setShowExercisePicker] = useState(false);
 
   // Sync local state when the interval changes or the sheet opens
   useEffect(() => {
@@ -96,6 +103,7 @@ export function IntervalEditSheet({
       setSeconds(s);
       setColor(interval.color);
       setNote(interval.note);
+      setExerciseType(interval?.exercise_type ?? null);
     }
   }, [interval, visible]);
 
@@ -129,8 +137,9 @@ export function IntervalEditSheet({
       duration_seconds: totalSeconds,
       color,
       note: note.trim(),
+      exercise_type: exerciseType,
     });
-  }, [interval, name, hours, minutes, seconds, color, note, onSave]);
+  }, [interval, name, hours, minutes, seconds, color, note, exerciseType, onSave]);
 
   // Don't render content if no interval
   if (!interval) return null;
@@ -259,6 +268,29 @@ export function IntervalEditSheet({
                   selectedColor={color}
                   onSelect={setColor}
                   style={styles.colorPicker}
+                />
+              </View>
+
+              {/* Exercise Type (for camera rep tracking) */}
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Rep Tracking</Text>
+                <Pressable
+                  style={styles.exerciseTypeButton}
+                  onPress={() => setShowExercisePicker(true)}
+                >
+                  <Text style={styles.exerciseTypeText}>
+                    {exerciseType
+                      ? getProfileByType(exerciseType)?.displayName ?? exerciseType
+                      : 'No tracking'}
+                  </Text>
+                  <Text style={styles.exerciseTypeChevron}>›</Text>
+                </Pressable>
+
+                <ExerciseTypePicker
+                  visible={showExercisePicker}
+                  selected={exerciseType}
+                  onSelect={setExerciseType}
+                  onClose={() => setShowExercisePicker(false)}
                 />
               </View>
 
@@ -439,6 +471,28 @@ const styles = StyleSheet.create({
   // Color picker
   colorPicker: {
     alignSelf: 'flex-start',
+  },
+
+  // Exercise type picker
+  exerciseTypeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f0f7ff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    marginBottom: 16,
+  },
+  exerciseTypeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2563EB',
+  },
+  exerciseTypeChevron: {
+    fontSize: 18,
+    color: '#94a3b8',
   },
 
   // Footer
