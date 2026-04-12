@@ -38,6 +38,9 @@ import AmbientBackground from '@/components/AmbientBackground';
 import { useIntensity } from '@/hooks/useIntensity';
 import { INTENSITY_COLORS } from '@/lib/intensity';
 import { interpolateColor } from 'react-native-reanimated';
+import { useRepTracking } from '@/hooks/useRepTracking';
+import { CameraPreview } from '@/components/CameraPreview';
+import { RepCountDisplay } from '@/components/RepCountDisplay';
 
 import { APP_COLORS, getTextColorForInterval } from '@/constants/colors';
 import { LAYOUT, SPACING } from '@/constants/layout';
@@ -764,6 +767,9 @@ export default function WorkoutScreen() {
   // Intensity engine — drives ambient visual effects.
   const intensity = useIntensity(timerLoop.tickData);
 
+  // Camera rep tracking (web-only in phase 1).
+  const repTracking = useRepTracking(timerLoop.tickData);
+
   // Local state.
   const [showTapToContinue, setShowTapToContinue] = useState(false);
   const [getReadyRemaining, setGetReadyRemaining] = useState<number | null>(null);
@@ -1195,6 +1201,14 @@ export default function WorkoutScreen() {
 
       {/* Main content area */}
       <View style={[styles.contentArea, webContainerStyle]}>
+        {/* Camera rep tracking overlay (web-only) */}
+        <CameraPreview
+          videoRef={repTracking.videoRef}
+          isTracking={repTracking.isTracking}
+          showNoPoseHint={repTracking.showNoPoseHint}
+          visible={settings.cameraEnabled && settings.showCameraPreview && !!tickData?.currentInterval?.exercise_type && !tickData?.isRestBetweenSets}
+          isMirrored={settings.cameraPosition === 'front'}
+        />
         {/* Top section: round + interval indicators */}
         <View style={styles.topSection}>
           {isRestBetweenSets && <RestBetweenSetsLabel textColor={textColor} />}
@@ -1256,6 +1270,13 @@ export default function WorkoutScreen() {
               act={intensity.act}
             />
           </View>
+
+          {/* Rep count from camera tracking */}
+          <RepCountDisplay
+            repCount={repTracking.repCount}
+            isTracking={repTracking.isTracking}
+            visible={settings.cameraEnabled && !!tickData?.currentInterval?.exercise_type && !tickData?.isRestBetweenSets}
+          />
 
           {/* Coaching note */}
           <CoachingNote

@@ -41,4 +41,13 @@ export interface AppSettings {
 
   /** When true, disables shader effects and complex animations. Respects system reduce-motion. */
   reduceMotion: boolean;
+
+  /** Global toggle for camera rep tracking. Off by default. Web-only in phase 1. */
+  cameraEnabled: boolean;
+
+  /** Which camera to use. Default: user-facing. */
+  cameraPosition: 'front' | 'back';
+
+  /** Show/hide the camera pip overlay on the workout screen. */
+  showCameraPreview: boolean;
 }

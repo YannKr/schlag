@@ -2,7 +2,7 @@
  * Barrel export for all Schlag type definitions.
  */
 
-export type { IntervalColorHex, Interval } from './interval';
+export type { IntervalColorHex, Interval, ExerciseType } from './interval';
 export type { AudioConfig, ToneName, IntervalAudioTone } from './audio';
 export type { Sequence } from './sequence';
 export type {

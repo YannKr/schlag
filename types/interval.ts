@@ -8,6 +8,9 @@
 /** Hex color string (e.g. '#E63946') from the 12-color interval palette. */
 export type IntervalColorHex = string;
 
+/** Supported exercise types for camera rep tracking. */
+export type ExerciseType = 'squat' | 'deadlift' | 'bench' | 'curl' | 'overhead_press' | 'row';
+
 export interface Interval {
   /** Unique identifier (UUID v4). */
   id: string;
@@ -29,4 +32,7 @@ export interface Interval {
 
   /** v2: Per-interval custom audio URL (when audio_tone is 'custom'). */
   custom_audio_url?: string | null;
+
+  /** Exercise type for camera rep tracking. null/undefined = no tracking. */
+  exercise_type?: ExerciseType | null;
 }

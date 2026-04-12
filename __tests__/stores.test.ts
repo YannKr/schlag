@@ -174,6 +174,9 @@ const INITIAL_SETTINGS_STATE = {
     defaultAnnounceNames: false,
     getReadySeconds: 3,
     reduceMotion: false,
+    cameraEnabled: false,
+    cameraPosition: 'front' as const,
+    showCameraPreview: true,
   },
   isLoaded: false,
 };
