@@ -40,6 +40,10 @@ export interface AnimatedCountdownProps {
   fontSize?: number;
   /** When true, disables scale animation and haptic feedback. */
   reduceMotion?: boolean;
+  /** Override the font family (e.g. FONT_FAMILY.seven for Signal's DSEG7). */
+  fontFamily?: string;
+  /** Override letter spacing. DSEG7 benefits from negative tracking. */
+  letterSpacing?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +87,8 @@ export function AnimatedCountdown({
   act,
   fontSize = FONT_SIZE.countdownMedium,
   reduceMotion = false,
+  fontFamily,
+  letterSpacing,
 }: AnimatedCountdownProps) {
   // -------------------------------------------------------------------------
   // Shared values
@@ -187,7 +193,13 @@ export function AnimatedCountdown({
     <Animated.Text
       style={[
         styles.timer,
-        { fontSize, lineHeight: fontSize * 1.1, color: textColor },
+        {
+          fontSize,
+          lineHeight: fontSize * 1.0,
+          color: textColor,
+          ...(fontFamily ? { fontFamily } : null),
+          ...(letterSpacing !== undefined ? { letterSpacing } : null),
+        },
         glowStyle,
         animatedStyle,
       ]}

@@ -1,13 +1,15 @@
 /**
- * Sequence Builder / Editor screen for Schlag.
+ * Sequence Builder — Signal direction.
+ *
+ * Editorial header (back · save · big name with cursor bar · three-up
+ * meta grid · one-round timeline preview) above an indexed step list.
+ * All advanced settings (description, audio, auto-advance, rest between
+ * sets) live below the step list to keep the builder focused on the
+ * sequence's shape.
  *
  * Route: /builder/[id]
  *   - id === 'new'  -> create a new sequence with defaults
  *   - id === UUID   -> load existing sequence from the store
- *
- * All edits are held in local state until the user presses "Save".
- * On save the sequence is written to the Zustand store (add or update)
- * and the screen navigates back.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -17,7 +19,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -29,18 +30,21 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { APP_COLORS } from '@/constants/colors';
-import { LAYOUT, SPACING } from '@/constants/layout';
-import { FONT_SIZE, FONT_WEIGHT } from '@/constants/typography';
+import { SIGNAL, normalizeIntervalHex } from '@/constants/colors';
+import { SPACING } from '@/constants/layout';
+import {
+  FONT_FAMILY,
+  FONT_SIZE,
+  FONT_WEIGHT,
+  LETTER_SPACING,
+} from '@/constants/typography';
 import {
   INTERVAL_NAME_MAX_LENGTH,
   SEQUENCE_DESCRIPTION_MAX_LENGTH,
-  SEQUENCE_REPEAT_MIN,
   SEQUENCE_REPEAT_MAX,
 } from '@/constants/validation';
 import { createDefaultInterval, createDefaultSequence } from '@/constants/defaults';
 import { useSequenceStore } from '@/stores/sequenceStore';
-import { FAB } from '@/components/FAB';
 import { IntervalRow } from '@/components/IntervalRow';
 import { IntervalEditSheet } from '@/components/IntervalEditSheet';
 import { DurationPicker } from '@/components/DurationPicker';
@@ -54,23 +58,15 @@ function pad(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
-/** Format a total-seconds value to a human-readable string. */
-function formatTotalDuration(totalSeconds: number): string {
-  if (totalSeconds <= 0) return '0s';
-
+function formatMMSS(totalSeconds: number): string {
+  if (totalSeconds < 0) return '0:00';
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
   const s = totalSeconds % 60;
-
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
+  if (h > 0) return `${h}:${pad(m)}:${pad(s)}`;
+  return `${pad(m)}:${pad(s)}`;
 }
 
-/**
- * Compute total workout duration from intervals, repeat count, and rest.
- * Infinite mode (repeat_count === 0) shows duration of a single round.
- */
 function computeTotalDuration(
   intervals: Interval[],
   repeatCount: number,
@@ -86,7 +82,7 @@ function computeTotalDuration(
 }
 
 // ---------------------------------------------------------------------------
-// Screen component
+// Screen
 // ---------------------------------------------------------------------------
 
 export default function BuilderScreen() {
@@ -94,24 +90,19 @@ export default function BuilderScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  // Store actions
   const addSequence = useSequenceStore((s) => s.addSequence);
   const updateSequence = useSequenceStore((s) => s.updateSequence);
   const getSequenceById = useSequenceStore((s) => s.getSequenceById);
 
   const isNew = id === 'new';
 
-  // -----------------------------------------------------------------------
-  // Local editable state -- populated once on mount
-  // -----------------------------------------------------------------------
-
   const [sequence, setSequence] = useState<Sequence | null>(null);
   const [editingInterval, setEditingInterval] = useState<Interval | null>(null);
   const [editSheetVisible, setEditSheetVisible] = useState(false);
   const [isInfinite, setIsInfinite] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const didInit = useRef(false);
 
-  // Initialize local state from store or defaults
   useEffect(() => {
     if (didInit.current) return;
     didInit.current = true;
@@ -123,19 +114,13 @@ export default function BuilderScreen() {
     } else if (id) {
       const existing = getSequenceById(id);
       if (existing) {
-        // Deep-clone so mutations don't touch the store directly
         setSequence(JSON.parse(JSON.stringify(existing)) as Sequence);
         setIsInfinite(existing.repeat_count === 0);
       } else {
-        // ID not found -- go back
         router.back();
       }
     }
   }, [id, isNew, getSequenceById, router]);
-
-  // -----------------------------------------------------------------------
-  // Derived values
-  // -----------------------------------------------------------------------
 
   const totalDuration = useMemo(() => {
     if (!sequence) return 0;
@@ -146,109 +131,99 @@ export default function BuilderScreen() {
     );
   }, [sequence]);
 
+  const singleRoundDuration = useMemo(() => {
+    if (!sequence) return 0;
+    return sequence.intervals.reduce((a, iv) => a + iv.duration_seconds, 0);
+  }, [sequence]);
+
   const showRestBetweenSets = useMemo(() => {
     if (!sequence) return false;
     return isInfinite || sequence.repeat_count > 1;
   }, [sequence, isInfinite]);
 
-  // -----------------------------------------------------------------------
-  // Handlers -- sequence-level fields
-  // -----------------------------------------------------------------------
-
+  // Handlers — sequence-level fields.
   const handleNameChange = useCallback((text: string) => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      return { ...prev, name: text.slice(0, INTERVAL_NAME_MAX_LENGTH) };
-    });
+    setSequence((prev) =>
+      prev ? { ...prev, name: text.slice(0, INTERVAL_NAME_MAX_LENGTH) } : prev,
+    );
   }, []);
 
   const handleDescriptionChange = useCallback((text: string) => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        description: text.slice(0, SEQUENCE_DESCRIPTION_MAX_LENGTH),
-      };
-    });
+    setSequence((prev) =>
+      prev
+        ? {
+            ...prev,
+            description: text.slice(0, SEQUENCE_DESCRIPTION_MAX_LENGTH),
+          }
+        : prev,
+    );
   }, []);
 
   const handleRepeatIncrement = useCallback(() => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      const next = Math.min(prev.repeat_count + 1, SEQUENCE_REPEAT_MAX);
-      return { ...prev, repeat_count: next };
-    });
+    setSequence((prev) =>
+      prev
+        ? { ...prev, repeat_count: Math.min(prev.repeat_count + 1, SEQUENCE_REPEAT_MAX) }
+        : prev,
+    );
   }, []);
 
   const handleRepeatDecrement = useCallback(() => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      const next = Math.max(prev.repeat_count - 1, 1);
-      return { ...prev, repeat_count: next };
-    });
+    setSequence((prev) =>
+      prev
+        ? { ...prev, repeat_count: Math.max(prev.repeat_count - 1, 1) }
+        : prev,
+    );
   }, []);
 
-  const handleInfiniteToggle = useCallback(
-    (value: boolean) => {
-      setIsInfinite(value);
-      setSequence((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          repeat_count: value ? 0 : 1,
-        };
-      });
-    },
-    [],
-  );
+  const handleInfiniteToggle = useCallback((value: boolean) => {
+    setIsInfinite(value);
+    setSequence((prev) =>
+      prev ? { ...prev, repeat_count: value ? 0 : 1 } : prev,
+    );
+  }, []);
 
   const handleRestChange = useCallback((seconds: number) => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      return { ...prev, rest_between_sets_seconds: seconds };
-    });
+    setSequence((prev) =>
+      prev ? { ...prev, rest_between_sets_seconds: seconds } : prev,
+    );
   }, []);
 
   const handleAutoAdvanceToggle = useCallback((value: boolean) => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      return { ...prev, auto_advance: value };
-    });
+    setSequence((prev) => (prev ? { ...prev, auto_advance: value } : prev));
   }, []);
 
   const handleHalfwayAlertToggle = useCallback((value: boolean) => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        audio_config: { ...prev.audio_config, halfway_alert: value },
-      };
-    });
+    setSequence((prev) =>
+      prev
+        ? {
+            ...prev,
+            audio_config: { ...prev.audio_config, halfway_alert: value },
+          }
+        : prev,
+    );
   }, []);
 
   const handleAnnounceNamesToggle = useCallback((value: boolean) => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        audio_config: { ...prev.audio_config, announce_interval_names: value },
-      };
-    });
+    setSequence((prev) =>
+      prev
+        ? {
+            ...prev,
+            audio_config: {
+              ...prev.audio_config,
+              announce_interval_names: value,
+            },
+          }
+        : prev,
+    );
   }, []);
 
-  // -----------------------------------------------------------------------
-  // Handlers -- interval CRUD
-  // -----------------------------------------------------------------------
-
+  // Handlers — interval CRUD.
   const handleAddInterval = useCallback(() => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      const newInterval = createDefaultInterval();
-      return {
-        ...prev,
-        intervals: [...prev.intervals, newInterval],
-      };
-    });
+    setSequence((prev) =>
+      prev
+        ? { ...prev, intervals: [...prev.intervals, createDefaultInterval()] }
+        : prev,
+    );
   }, []);
 
   const handleIntervalPress = useCallback((interval: Interval) => {
@@ -257,15 +232,16 @@ export default function BuilderScreen() {
   }, []);
 
   const handleIntervalSave = useCallback((updated: Interval) => {
-    setSequence((prev) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        intervals: prev.intervals.map((iv) =>
-          iv.id === updated.id ? updated : iv,
-        ),
-      };
-    });
+    setSequence((prev) =>
+      prev
+        ? {
+            ...prev,
+            intervals: prev.intervals.map((iv) =>
+              iv.id === updated.id ? updated : iv,
+            ),
+          }
+        : prev,
+    );
     setEditSheetVisible(false);
     setEditingInterval(null);
   }, []);
@@ -280,9 +256,7 @@ export default function BuilderScreen() {
     setSequence((prev) => {
       if (!prev) return prev;
       const intervals = [...prev.intervals];
-      const temp = intervals[index - 1];
-      intervals[index - 1] = intervals[index];
-      intervals[index] = temp;
+      [intervals[index - 1], intervals[index]] = [intervals[index], intervals[index - 1]];
       return { ...prev, intervals };
     });
   }, []);
@@ -292,9 +266,7 @@ export default function BuilderScreen() {
       if (!prev) return prev;
       if (index >= prev.intervals.length - 1) return prev;
       const intervals = [...prev.intervals];
-      const temp = intervals[index + 1];
-      intervals[index + 1] = intervals[index];
-      intervals[index] = temp;
+      [intervals[index + 1], intervals[index]] = [intervals[index], intervals[index + 1]];
       return { ...prev, intervals };
     });
   }, []);
@@ -302,44 +274,27 @@ export default function BuilderScreen() {
   const handleDeleteInterval = useCallback((index: number) => {
     setSequence((prev) => {
       if (!prev) return prev;
-
-      // Confirm if it's the last interval
       if (prev.intervals.length === 1) {
-        const doDelete = () => {
-          // Cannot delete the last interval -- show warning
-        };
-
+        const msg =
+          'Cannot delete the last interval. A sequence must have at least one interval.';
         if (Platform.OS === 'web') {
-          // eslint-disable-next-line no-alert
-          window.alert(
-            'Cannot delete the last interval. A sequence must have at least one interval.',
-          );
+          window.alert(msg);
         } else {
-          Alert.alert(
-            'Cannot Delete',
-            'A sequence must have at least one interval.',
-          );
+          Alert.alert('Cannot Delete', 'A sequence must have at least one interval.');
         }
         return prev;
       }
-
       const intervals = prev.intervals.filter((_, i) => i !== index);
       return { ...prev, intervals };
     });
   }, []);
 
-  // -----------------------------------------------------------------------
-  // Save handler
-  // -----------------------------------------------------------------------
-
   const handleSave = useCallback(() => {
     if (!sequence) return;
 
-    // Validate name
     const trimmedName = sequence.name.trim();
     if (trimmedName.length === 0) {
       if (Platform.OS === 'web') {
-        // eslint-disable-next-line no-alert
         window.alert('Sequence name is required.');
       } else {
         Alert.alert('Missing Name', 'Sequence name is required.');
@@ -364,10 +319,6 @@ export default function BuilderScreen() {
     router.back();
   }, [sequence, isNew, addSequence, updateSequence, router]);
 
-  // -----------------------------------------------------------------------
-  // Render helpers
-  // -----------------------------------------------------------------------
-
   const renderIntervalRow = useCallback(
     ({ item, index }: ListRenderItemInfo<Interval>) => {
       if (!sequence) return null;
@@ -388,64 +339,63 @@ export default function BuilderScreen() {
 
   const keyExtractor = useCallback((item: Interval) => item.id, []);
 
-  // -----------------------------------------------------------------------
-  // Loading / error guard
-  // -----------------------------------------------------------------------
-
   if (!sequence) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={styles.loadingText}>Loading…</Text>
       </View>
     );
   }
 
-  // -----------------------------------------------------------------------
-  // Render
-  // -----------------------------------------------------------------------
+  // Timeline preview blocks (one round, proportional).
+  const timelineBlocks = sequence.intervals.map((iv) => ({
+    hex: normalizeIntervalHex(iv.color),
+    dur: iv.duration_seconds,
+  }));
+
+  const roundsLabel = isInfinite ? '×∞' : `×${sequence.repeat_count}`;
+  const restLabel = showRestBetweenSets
+    ? formatMMSS(sequence.rest_between_sets_seconds)
+    : '—';
+  const totalLabel = formatMMSS(totalDuration);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* ----------------------------------------------------------------- */}
-      {/* Header                                                            */}
-      {/* ----------------------------------------------------------------- */}
-      <View style={styles.header}>
+    <View
+      style={[
+        styles.container,
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
+      ]}
+    >
+      {/* Top bar: back · save */}
+      <View style={styles.topBar}>
         <Pressable
           onPress={() => router.back()}
           accessibilityRole="button"
           accessibilityLabel="Go back"
           hitSlop={8}
           style={({ pressed }) => [
-            styles.headerButton,
+            styles.topBarButton,
             { opacity: pressed ? 0.6 : 1 },
             Platform.OS === 'web' && ({ cursor: 'pointer' } as ViewStyle),
           ]}
         >
-          <Text style={styles.headerButtonText}>{'\u2190'} Back</Text>
+          <Text style={styles.topBarBack}>← Library</Text>
         </Pressable>
-
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          {isNew ? 'New Sequence' : 'Edit Sequence'}
-        </Text>
-
         <Pressable
           onPress={handleSave}
           accessibilityRole="button"
           accessibilityLabel="Save sequence"
           hitSlop={8}
           style={({ pressed }) => [
-            styles.saveButton,
-            { opacity: pressed ? 0.7 : 1 },
+            styles.topBarButton,
+            { opacity: pressed ? 0.6 : 1 },
             Platform.OS === 'web' && ({ cursor: 'pointer' } as ViewStyle),
           ]}
         >
-          <Text style={styles.saveButtonText}>Save</Text>
+          <Text style={styles.topBarSave}>Save</Text>
         </Pressable>
       </View>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* Body (scrollable properties + interval list)                      */}
-      {/* ----------------------------------------------------------------- */}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -454,239 +404,216 @@ export default function BuilderScreen() {
           data={sequence.intervals}
           keyExtractor={keyExtractor}
           renderItem={renderIntervalRow}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: LAYOUT.fabSize + SPACING.xl + insets.bottom },
-          ]}
           keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.listContent}
           ListHeaderComponent={
-            <View style={styles.propertiesSection}>
-              {/* ----------------------------------------------------------- */}
-              {/* Total duration summary                                       */}
-              {/* ----------------------------------------------------------- */}
-              <View style={styles.durationSummary}>
-                <Text style={styles.durationSummaryLabel}>Total Duration</Text>
-                <Text style={styles.durationSummaryValue}>
-                  {formatTotalDuration(totalDuration)}
-                  {isInfinite ? ' per round' : ''}
-                </Text>
+            <View>
+              {/* Editorial heading */}
+              <View style={styles.headingBlock}>
+                <Text style={styles.eyebrow}>Sequence</Text>
+                <View style={styles.nameRow}>
+                  <TextInput
+                    style={styles.nameInput}
+                    value={sequence.name}
+                    onChangeText={handleNameChange}
+                    placeholder="Untitled sequence"
+                    placeholderTextColor={SIGNAL.mutedInk}
+                    maxLength={INTERVAL_NAME_MAX_LENGTH}
+                    returnKeyType="done"
+                    accessibilityLabel="Sequence name"
+                    multiline
+                  />
+                  <Text style={styles.cursorBar}>│</Text>
+                </View>
               </View>
 
-              {/* ----------------------------------------------------------- */}
-              {/* Sequence Name                                                */}
-              {/* ----------------------------------------------------------- */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Name</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={sequence.name}
-                  onChangeText={handleNameChange}
-                  placeholder="Sequence name"
-                  placeholderTextColor={APP_COLORS.textMuted}
-                  maxLength={INTERVAL_NAME_MAX_LENGTH}
-                  returnKeyType="done"
-                  accessibilityLabel="Sequence name"
-                />
+              {/* Three-up meta grid */}
+              <View style={styles.metaGrid}>
+                <View style={[styles.metaCell, styles.metaCellBorder]}>
+                  <Text style={styles.metaLabel}>Total</Text>
+                  <Text style={styles.metaValue}>{totalLabel}</Text>
+                </View>
+                <Pressable
+                  onPress={handleRepeatIncrement}
+                  onLongPress={handleRepeatDecrement}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Rounds ${roundsLabel}. Tap to increase, long press to decrease.`}
+                  style={({ pressed }) => [
+                    styles.metaCell,
+                    styles.metaCellBorder,
+                    pressed && styles.metaCellPressed,
+                  ]}
+                >
+                  <Text style={styles.metaLabel}>Rounds</Text>
+                  <Text style={styles.metaValue}>{roundsLabel}</Text>
+                </Pressable>
+                <View style={styles.metaCell}>
+                  <Text style={styles.metaLabel}>Rest/set</Text>
+                  <Text style={styles.metaValue}>{restLabel}</Text>
+                </View>
               </View>
 
-              {/* ----------------------------------------------------------- */}
-              {/* Description                                                  */}
-              {/* ----------------------------------------------------------- */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Description</Text>
-                <TextInput
-                  style={[styles.textInput, styles.descriptionInput]}
-                  value={sequence.description}
-                  onChangeText={handleDescriptionChange}
-                  placeholder="Optional description"
-                  placeholderTextColor={APP_COLORS.textMuted}
-                  maxLength={SEQUENCE_DESCRIPTION_MAX_LENGTH}
-                  multiline
-                  numberOfLines={2}
-                  blurOnSubmit
-                  accessibilityLabel="Sequence description"
-                />
-                <Text style={styles.charCount}>
-                  {sequence.description.length}/{SEQUENCE_DESCRIPTION_MAX_LENGTH}
-                </Text>
-              </View>
-
-              {/* ----------------------------------------------------------- */}
-              {/* Repeat Count                                                 */}
-              {/* ----------------------------------------------------------- */}
-              <View style={styles.fieldGroup}>
-                <Text style={styles.fieldLabel}>Repeat Count</Text>
-
-                <View style={styles.repeatRow}>
-                  {/* Infinite toggle */}
-                  <View style={styles.infiniteToggle}>
-                    <Text style={styles.toggleLabel}>Infinite</Text>
-                    <Switch
-                      value={isInfinite}
-                      onValueChange={handleInfiniteToggle}
-                      trackColor={{
-                        false: APP_COLORS.divider,
-                        true: APP_COLORS.primary,
-                      }}
-                      accessibilityLabel="Infinite repeat mode"
+              {/* Timeline preview */}
+              <View style={styles.timelineBlock}>
+                <View style={styles.timelineLegend}>
+                  <Text style={styles.eyebrow}>Timeline — one round</Text>
+                  <Text style={styles.eyebrowRight}>
+                    {formatMMSS(singleRoundDuration)}
+                  </Text>
+                </View>
+                <View style={styles.timelineStrip}>
+                  {timelineBlocks.length === 0 ? (
+                    <View
+                      style={[
+                        styles.timelineEmptyBlock,
+                        { backgroundColor: SIGNAL.divider },
+                      ]}
                     />
-                  </View>
-
-                  {/* Stepper (hidden when infinite) */}
-                  {!isInfinite && (
-                    <View style={styles.stepper}>
-                      <Pressable
-                        onPress={handleRepeatDecrement}
-                        disabled={sequence.repeat_count <= 1}
-                        accessibilityRole="button"
-                        accessibilityLabel="Decrease repeat count"
-                        style={({ pressed }) => [
-                          styles.stepperButton,
+                  ) : (
+                    timelineBlocks.map((b, i) => (
+                      <View
+                        key={i}
+                        style={[
+                          styles.timelineSegment,
                           {
-                            opacity:
-                              sequence.repeat_count <= 1
-                                ? 0.3
-                                : pressed
-                                  ? 0.6
-                                  : 1,
+                            backgroundColor: b.hex,
+                            flexGrow: b.dur,
+                            flexShrink: 1,
+                            flexBasis: 0,
+                            marginLeft: i === 0 ? 0 : 2,
                           },
-                          Platform.OS === 'web' &&
-                            ({
-                              cursor:
-                                sequence.repeat_count <= 1
-                                  ? 'not-allowed'
-                                  : 'pointer',
-                            } as ViewStyle),
                         ]}
                       >
-                        <Text style={styles.stepperButtonText}>{'\u2212'}</Text>
-                      </Pressable>
-
-                      <Text
-                        style={styles.stepperValue}
-                        accessibilityLabel={`Repeat count: ${sequence.repeat_count}`}
-                      >
-                        {sequence.repeat_count}
-                      </Text>
-
-                      <Pressable
-                        onPress={handleRepeatIncrement}
-                        disabled={sequence.repeat_count >= SEQUENCE_REPEAT_MAX}
-                        accessibilityRole="button"
-                        accessibilityLabel="Increase repeat count"
-                        style={({ pressed }) => [
-                          styles.stepperButton,
-                          {
-                            opacity:
-                              sequence.repeat_count >= SEQUENCE_REPEAT_MAX
-                                ? 0.3
-                                : pressed
-                                  ? 0.6
-                                  : 1,
-                          },
-                          Platform.OS === 'web' &&
-                            ({
-                              cursor:
-                                sequence.repeat_count >= SEQUENCE_REPEAT_MAX
-                                  ? 'not-allowed'
-                                  : 'pointer',
-                            } as ViewStyle),
-                        ]}
-                      >
-                        <Text style={styles.stepperButtonText}>+</Text>
-                      </Pressable>
-                    </View>
+                        <Text style={styles.timelineSegmentText}>{b.dur}s</Text>
+                      </View>
+                    ))
                   )}
                 </View>
               </View>
 
-              {/* ----------------------------------------------------------- */}
-              {/* Rest Between Sets (shown only when repeats > 1 or infinite)  */}
-              {/* ----------------------------------------------------------- */}
-              {showRestBetweenSets && (
-                <View style={styles.fieldGroup}>
-                  <Text style={styles.fieldLabel}>Rest Between Sets</Text>
-                  <DurationPicker
-                    value={sequence.rest_between_sets_seconds}
-                    onChange={handleRestChange}
+              {/* Steps list label */}
+              <View style={styles.stepsHeader}>
+                <Text style={styles.eyebrow}>
+                  Steps · {sequence.intervals.length}
+                </Text>
+                <Text style={styles.eyebrowHint}>tap to edit</Text>
+              </View>
+            </View>
+          }
+          ListFooterComponent={
+            <View>
+              {/* Add step accent CTA */}
+              <Pressable
+                onPress={handleAddInterval}
+                accessibilityRole="button"
+                accessibilityLabel="Add interval"
+                style={({ pressed }) => [
+                  styles.addStep,
+                  pressed && styles.addStepPressed,
+                ]}
+              >
+                <Text style={styles.addStepText}>＋ Add step</Text>
+              </Pressable>
+
+              {/* Infinite toggle + rest (visible when applicable) */}
+              <View style={styles.sectionBlock}>
+                <View style={styles.toggleRow}>
+                  <Text style={styles.toggleLabel}>Repeat infinitely</Text>
+                  <Switch
+                    value={isInfinite}
+                    onValueChange={handleInfiniteToggle}
+                    trackColor={{ false: SIGNAL.divider, true: SIGNAL.accent }}
+                    thumbColor="#FFFFFF"
+                    accessibilityLabel="Infinite repeat mode"
                   />
+                </View>
+
+                {showRestBetweenSets && (
+                  <View style={styles.subBlock}>
+                    <Text style={styles.subBlockLabel}>Rest between sets</Text>
+                    <DurationPicker
+                      value={sequence.rest_between_sets_seconds}
+                      onChange={handleRestChange}
+                    />
+                  </View>
+                )}
+              </View>
+
+              {/* Advanced (collapsible) */}
+              <Pressable
+                onPress={() => setAdvancedOpen((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  advancedOpen ? 'Hide advanced settings' : 'Show advanced settings'
+                }
+                style={styles.advancedHeader}
+              >
+                <Text style={styles.eyebrow}>
+                  Advanced {advancedOpen ? '−' : '+'}
+                </Text>
+              </Pressable>
+
+              {advancedOpen && (
+                <View style={styles.sectionBlock}>
+                  <View style={styles.subBlock}>
+                    <Text style={styles.subBlockLabel}>Description</Text>
+                    <TextInput
+                      style={[styles.textInput, styles.descriptionInput]}
+                      value={sequence.description}
+                      onChangeText={handleDescriptionChange}
+                      placeholder="Optional"
+                      placeholderTextColor={SIGNAL.mutedInk}
+                      maxLength={SEQUENCE_DESCRIPTION_MAX_LENGTH}
+                      multiline
+                      numberOfLines={2}
+                      blurOnSubmit
+                      accessibilityLabel="Sequence description"
+                    />
+                    <Text style={styles.charCount}>
+                      {sequence.description.length}/
+                      {SEQUENCE_DESCRIPTION_MAX_LENGTH}
+                    </Text>
+                  </View>
+
+                  <View style={styles.toggleRow}>
+                    <Text style={styles.toggleLabel}>Auto-advance</Text>
+                    <Switch
+                      value={sequence.auto_advance}
+                      onValueChange={handleAutoAdvanceToggle}
+                      trackColor={{ false: SIGNAL.divider, true: SIGNAL.accent }}
+                      thumbColor="#FFFFFF"
+                      accessibilityLabel="Auto-advance between intervals"
+                    />
+                  </View>
+
+                  <View style={styles.toggleRow}>
+                    <Text style={styles.toggleLabel}>Halfway alert</Text>
+                    <Switch
+                      value={sequence.audio_config.halfway_alert}
+                      onValueChange={handleHalfwayAlertToggle}
+                      trackColor={{ false: SIGNAL.divider, true: SIGNAL.accent }}
+                      thumbColor="#FFFFFF"
+                      accessibilityLabel="Play an alert at the halfway point of each interval"
+                    />
+                  </View>
+
+                  <View style={styles.toggleRow}>
+                    <Text style={styles.toggleLabel}>Announce interval names</Text>
+                    <Switch
+                      value={sequence.audio_config.announce_interval_names}
+                      onValueChange={handleAnnounceNamesToggle}
+                      trackColor={{ false: SIGNAL.divider, true: SIGNAL.accent }}
+                      thumbColor="#FFFFFF"
+                      accessibilityLabel="Announce the interval name at the start of each interval"
+                    />
+                  </View>
                 </View>
               )}
-
-              {/* ----------------------------------------------------------- */}
-              {/* Auto-advance                                                 */}
-              {/* ----------------------------------------------------------- */}
-              <View style={[styles.fieldGroup, styles.toggleRow]}>
-                <Text style={styles.fieldLabel}>Auto-Advance</Text>
-                <Switch
-                  value={sequence.auto_advance}
-                  onValueChange={handleAutoAdvanceToggle}
-                  trackColor={{
-                    false: APP_COLORS.divider,
-                    true: APP_COLORS.primary,
-                  }}
-                  accessibilityLabel="Auto-advance between intervals"
-                />
-              </View>
-
-              {/* ----------------------------------------------------------- */}
-              {/* Audio settings (v2)                                          */}
-              {/* ----------------------------------------------------------- */}
-              <View style={styles.audioSection}>
-                <Text style={styles.audioSectionTitle}>Audio</Text>
-
-                <View style={[styles.fieldGroup, styles.toggleRow]}>
-                  <Text style={styles.fieldLabel}>Halfway Alert</Text>
-                  <Switch
-                    value={sequence.audio_config.halfway_alert}
-                    onValueChange={handleHalfwayAlertToggle}
-                    trackColor={{
-                      false: APP_COLORS.divider,
-                      true: APP_COLORS.primary,
-                    }}
-                    accessibilityLabel="Play an alert at the halfway point of each interval"
-                  />
-                </View>
-
-                <View style={[styles.fieldGroup, styles.toggleRow]}>
-                  <Text style={styles.fieldLabel}>Announce Interval Names</Text>
-                  <Switch
-                    value={sequence.audio_config.announce_interval_names}
-                    onValueChange={handleAnnounceNamesToggle}
-                    trackColor={{
-                      false: APP_COLORS.divider,
-                      true: APP_COLORS.primary,
-                    }}
-                    accessibilityLabel="Announce the interval name at the start of each interval"
-                  />
-                </View>
-              </View>
-
-              {/* ----------------------------------------------------------- */}
-              {/* Interval list header                                         */}
-              {/* ----------------------------------------------------------- */}
-              <View style={styles.intervalListHeader}>
-                <Text style={styles.intervalListTitle}>
-                  Intervals ({sequence.intervals.length})
-                </Text>
-              </View>
             </View>
           }
         />
       </KeyboardAvoidingView>
 
-      {/* ----------------------------------------------------------------- */}
-      {/* FAB: Add interval                                                 */}
-      {/* ----------------------------------------------------------------- */}
-      <FAB
-        onPress={handleAddInterval}
-        accessibilityLabel="Add interval"
-        style={{ bottom: SPACING.lg + insets.bottom }}
-      />
-
-      {/* ----------------------------------------------------------------- */}
-      {/* Interval Edit Sheet                                               */}
-      {/* ----------------------------------------------------------------- */}
       <IntervalEditSheet
         visible={editSheetVisible}
         interval={editingInterval}
@@ -702,212 +629,235 @@ export default function BuilderScreen() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: APP_COLORS.backgroundLight,
-  },
-  flex: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: SIGNAL.paper },
+  flex: { flex: 1 },
+
   loadingText: {
-    fontSize: FONT_SIZE.bodyLarge,
-    color: APP_COLORS.textMuted,
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.body,
+    color: SIGNAL.mutedInk,
     textAlign: 'center',
     marginTop: SPACING.xxxl,
   },
 
-  // -- Header ---------------------------------------------------------------
-  header: {
+  // Top bar
+  topBar: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: APP_COLORS.divider,
-    backgroundColor: APP_COLORS.surface,
-  },
-  headerButton: {
-    minWidth: LAYOUT.minTapTarget,
-    minHeight: LAYOUT.minTapTarget,
-    justifyContent: 'center',
-  },
-  headerButtonText: {
-    fontSize: FONT_SIZE.bodyLarge,
-    color: APP_COLORS.primary,
-    fontWeight: FONT_WEIGHT.medium,
-  },
-  headerTitle: {
-    fontSize: FONT_SIZE.headingSmall,
-    fontWeight: FONT_WEIGHT.bold,
-    color: APP_COLORS.textPrimary,
-    flex: 1,
-    textAlign: 'center',
-    marginHorizontal: SPACING.sm,
-  },
-  saveButton: {
-    minWidth: LAYOUT.minTapTarget,
-    minHeight: LAYOUT.minTapTarget,
-    justifyContent: 'center',
-    alignItems: 'flex-end',
-    backgroundColor: APP_COLORS.primary,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: LAYOUT.borderRadius,
-  },
-  saveButtonText: {
-    fontSize: FONT_SIZE.bodyLarge,
-    color: '#FFFFFF',
-    fontWeight: FONT_WEIGHT.semibold,
-  },
-
-  // -- List content ---------------------------------------------------------
-  listContent: {
-    // paddingBottom set dynamically to account for FAB + safe area
-  },
-
-  // -- Properties section (list header) -------------------------------------
-  propertiesSection: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-  },
-
-  // -- Duration summary -----------------------------------------------------
-  durationSummary: {
-    backgroundColor: APP_COLORS.surface,
-    borderRadius: LAYOUT.cardRadius,
-    padding: SPACING.lg,
-    marginBottom: SPACING.xl,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
   },
-  durationSummaryLabel: {
-    fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textMuted,
+  topBarButton: { minHeight: 28, justifyContent: 'center' },
+  topBarBack: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.bodySmall,
+    color: SIGNAL.mutedInk,
     fontWeight: FONT_WEIGHT.medium,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: SPACING.xs,
   },
-  durationSummaryValue: {
-    fontSize: FONT_SIZE.headingLarge,
-    fontWeight: FONT_WEIGHT.bold,
-    color: APP_COLORS.textPrimary,
+  topBarSave: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.bodySmall,
+    color: SIGNAL.accent,
+    fontWeight: FONT_WEIGHT.semibold,
   },
 
-  // -- Field groups ---------------------------------------------------------
-  fieldGroup: {
-    marginBottom: SPACING.lg,
+  listContent: { paddingBottom: 80 },
+
+  // Heading block
+  headingBlock: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SIGNAL.divider,
   },
-  fieldLabel: {
-    fontSize: FONT_SIZE.body,
-    fontWeight: FONT_WEIGHT.semibold,
-    color: APP_COLORS.textSecondary,
+  eyebrow: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: LETTER_SPACING.eyebrow,
+    color: SIGNAL.mutedInk,
+    textTransform: 'uppercase',
+    fontWeight: FONT_WEIGHT.medium,
     marginBottom: SPACING.sm,
   },
-  textInput: {
-    borderWidth: 1.5,
-    borderColor: APP_COLORS.divider,
-    borderRadius: LAYOUT.borderRadius,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    fontSize: FONT_SIZE.bodyLarge,
-    color: APP_COLORS.textPrimary,
-    backgroundColor: APP_COLORS.surface,
-    minHeight: LAYOUT.buttonMinHeight,
-  },
-  descriptionInput: {
-    minHeight: 64,
-    textAlignVertical: 'top',
-  },
-  charCount: {
+  eyebrowRight: {
+    fontFamily: FONT_FAMILY.seven,
     fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textMuted,
-    textAlign: 'right',
-    marginTop: SPACING.xs,
+    color: SIGNAL.mutedInk,
+    letterSpacing: 0.5,
+  },
+  eyebrowHint: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    color: SIGNAL.mutedInk,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  nameRow: { flexDirection: 'row', alignItems: 'flex-end' },
+  nameInput: {
+    flex: 1,
+    fontFamily: FONT_FAMILY.display,
+    fontSize: FONT_SIZE.displayMedium,
+    fontWeight: FONT_WEIGHT.semibold,
+    letterSpacing: LETTER_SPACING.display,
+    color: SIGNAL.ink,
+    padding: 0,
+    lineHeight: FONT_SIZE.displayMedium * 1.1,
+    minHeight: FONT_SIZE.displayMedium * 1.1,
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
+  },
+  cursorBar: {
+    fontFamily: FONT_FAMILY.display,
+    fontSize: FONT_SIZE.displayMedium,
+    color: SIGNAL.accent,
+    fontWeight: FONT_WEIGHT.semibold,
+    lineHeight: FONT_SIZE.displayMedium * 1.1,
+    marginLeft: 2,
   },
 
-  // -- Repeat count stepper -------------------------------------------------
-  repeatRow: {
+  // Meta grid
+  metaGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SIGNAL.divider,
+  },
+  metaCell: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+  },
+  metaCellBorder: {
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: SIGNAL.divider,
+  },
+  metaCellPressed: { backgroundColor: '#F2EFE8' },
+  metaLabel: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: LETTER_SPACING.caption,
+    color: SIGNAL.mutedInk,
+    textTransform: 'uppercase',
+    fontWeight: FONT_WEIGHT.medium,
+  },
+  metaValue: {
+    fontFamily: FONT_FAMILY.seven,
+    fontSize: FONT_SIZE.headingMedium,
+    color: SIGNAL.ink,
+    marginTop: 2,
+    letterSpacing: 0.5,
+  },
+
+  // Timeline
+  timelineBlock: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.sm,
+  },
+  timelineLegend: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: SPACING.sm,
   },
-  infiniteToggle: {
+  timelineStrip: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  toggleLabel: {
-    fontSize: FONT_SIZE.bodyLarge,
-    color: APP_COLORS.textPrimary,
-  },
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderRadius: LAYOUT.borderRadius,
-    borderWidth: 1.5,
-    borderColor: APP_COLORS.divider,
+    height: 44,
     overflow: 'hidden',
   },
-  stepperButton: {
-    width: LAYOUT.minTapTarget,
-    height: LAYOUT.minTapTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
+  timelineSegment: {
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 6,
+    paddingBottom: 4,
   },
-  stepperButtonText: {
-    fontSize: FONT_SIZE.headingMedium,
-    color: APP_COLORS.primary,
+  timelineEmptyBlock: { flex: 1, height: '100%' },
+  timelineSegmentText: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: 9,
     fontWeight: FONT_WEIGHT.semibold,
-  },
-  stepperValue: {
-    width: 44,
-    textAlign: 'center',
-    fontSize: FONT_SIZE.headingSmall,
-    fontWeight: FONT_WEIGHT.bold,
-    color: APP_COLORS.textPrimary,
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
 
-  // -- Auto-advance toggle row ----------------------------------------------
+  // Steps
+  stepsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.xs,
+  },
+  addStep: {
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SIGNAL.divider,
+  },
+  addStepPressed: { backgroundColor: '#F2EFE8' },
+  addStepText: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.bodySmall,
+    color: SIGNAL.accent,
+    fontWeight: FONT_WEIGHT.semibold,
+  },
+
+  // Sections below steps
+  sectionBlock: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.md,
+  },
+  subBlock: {
+    marginTop: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  subBlockLabel: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: LETTER_SPACING.caption,
+    color: SIGNAL.mutedInk,
+    textTransform: 'uppercase',
+    fontWeight: FONT_WEIGHT.medium,
+    marginBottom: SPACING.sm,
+  },
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-
-  // -- Audio section (v2) ---------------------------------------------------
-  audioSection: {
-    marginTop: SPACING.lg,
-    paddingTop: SPACING.md,
+    paddingVertical: SPACING.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: APP_COLORS.divider,
+    borderTopColor: SIGNAL.divider,
   },
-  audioSectionTitle: {
-    fontSize: FONT_SIZE.headingSmall,
-    fontWeight: FONT_WEIGHT.bold,
-    color: APP_COLORS.textPrimary,
-    marginBottom: SPACING.md,
+  toggleLabel: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.body + 1,
+    color: SIGNAL.ink,
+    fontWeight: FONT_WEIGHT.medium,
   },
 
-  // -- Interval list header -------------------------------------------------
-  intervalListHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.sm,
-    paddingBottom: SPACING.sm,
+  textInput: {
+    fontFamily: FONT_FAMILY.sans,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: APP_COLORS.divider,
+    borderBottomColor: SIGNAL.ink,
+    fontSize: FONT_SIZE.bodyLarge,
+    color: SIGNAL.ink,
+    paddingVertical: SPACING.sm,
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
   },
-  intervalListTitle: {
-    fontSize: FONT_SIZE.headingSmall,
-    fontWeight: FONT_WEIGHT.bold,
-    color: APP_COLORS.textPrimary,
+  descriptionInput: { minHeight: 56, textAlignVertical: 'top' },
+  charCount: {
+    fontFamily: FONT_FAMILY.mono,
+    fontSize: FONT_SIZE.eyebrow,
+    color: SIGNAL.mutedInk,
+    textAlign: 'right',
+    marginTop: SPACING.xs,
+  },
+
+  // Advanced header
+  advancedHeader: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.sm,
   },
 });
