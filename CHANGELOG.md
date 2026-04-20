@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0.0] - 2026-04-20
+
+### Changed
+- **Signal design system.** Full visual refresh across every screen: library, builder, workout, history, settings. New Swiss-editorial palette (warm paper `#FAFAF7`, ink `#141416`, vermillion accent `#EA2F14`) with a typography system built on Inter + JetBrains Mono (DSEG7 for seven-segment timer digits).
+- **Interval palette.** 12 colorblind-retuned hues paired with non-color glyphs (circle, triangle, square, etc.) for redundant encoding — color-deficient users can still tell intervals apart at a glance.
+- **Workout screen.** Redesigned countdown and progress UI. Cleaner hierarchy, bigger timer, less chrome.
+- **Tabs.** New Signal-styled bottom tab bar with a thin top-rule active indicator.
+- **Splash/icon.** Background updated to paper tone to match the new palette.
+
+### Added
+- New `Wordmark` and `Glyph` components for the identity system.
+- Web HTML shell (`app/+html.tsx`) that preloads Inter, JetBrains Mono, and DSEG7 fonts and sets the paper background at the document level to prevent white flash on load.
+- `react-native-svg` for glyph rendering.
+
+### Fixed
+- Bottom tab labels (Library/History/Settings) no longer clip below the viewport on Firefox. Root cause: `html`/`body`/`#root` had no explicit height, and the navigator's tab bar container was shorter than the tablist's natural height.
+
 ## [0.1.0.0] - 2026-04-11
 
 ### Added

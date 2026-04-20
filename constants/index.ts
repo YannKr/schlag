@@ -4,14 +4,25 @@
 
 export {
   APP_COLORS,
+  SIGNAL,
   INTERVAL_COLORS,
   INTERVAL_HEX_SET,
   DEFAULT_INTERVAL_COLOR,
   getTextColorForInterval,
+  getIntervalByHex,
+  getIntervalById,
+  getGlyphForInterval,
+  normalizeIntervalHex,
 } from './colors';
-export type { IntervalColor } from './colors';
+export type { IntervalColor, IntervalGlyph } from './colors';
 
-export { FONT_FAMILY, FONT_SIZE, FONT_WEIGHT, LINE_HEIGHT } from './typography';
+export {
+  FONT_FAMILY,
+  FONT_SIZE,
+  FONT_WEIGHT,
+  LETTER_SPACING,
+  LINE_HEIGHT,
+} from './typography';
 
 export { LAYOUT, SPACING } from './layout';
 

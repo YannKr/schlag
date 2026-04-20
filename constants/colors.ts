@@ -1,8 +1,7 @@
 /**
- * Color palette and interval color definitions for Schlag.
- *
- * All values are sourced from the PRD design system (Section 6.1.1)
- * and the Interval Color Palette appendix.
+ * Signal palette — Swiss-editorial with a mechanical twist.
+ * Paper/ink surfaces, vermillion accent, 12 colorblind-retuned interval hues
+ * each paired with a non-color glyph for redundant encoding.
  */
 
 // ---------------------------------------------------------------------------
@@ -10,111 +9,167 @@
 // ---------------------------------------------------------------------------
 
 export const APP_COLORS = {
-  /** Primary accent -- Schlag Red. Used for FAB, CTAs, active states. */
-  primary: '#E63946',
+  /** Vermillion accent. Swiss poster red. CTAs, active states, cursor bars. */
+  primary: '#EA2F14',
 
-  /** Dark background used on the workout screen by default. */
-  backgroundDark: '#1A1A2E',
+  /** Deep near-black. Used for ink in calm surfaces and dark workout fallback. */
+  backgroundDark: '#141416',
 
-  /** Light background used for the library and settings screens. */
-  backgroundLight: '#F8FAFC',
+  /** Warm paper. Library, builder, settings, history. */
+  backgroundLight: '#FAFAF7',
 
-  /** Primary text color (dark mode inverse is white). */
-  textPrimary: '#1A1A2E',
+  /** Ink — primary text. */
+  textPrimary: '#141416',
 
-  /** Secondary text color for labels and metadata. */
-  textSecondary: '#475569',
+  /** MutedInk — labels, metadata, secondary UI. */
+  textSecondary: '#8A8986',
 
-  /** Muted text color for placeholders and disabled states. */
-  textMuted: '#94A3B8',
+  /** Deeper muted for placeholders and disabled states. */
+  textMuted: '#B3B1AC',
 
-  /** Text color used on dark backgrounds. */
+  /** Text on dark / full-bleed interval-color backgrounds. */
   textOnDark: '#FFFFFF',
 
-  /** Card / surface background. */
+  /** Card / surface background on paper. */
   surface: '#FFFFFF',
 
-  /** Divider / separator lines. */
-  divider: '#E2E8F0',
+  /** Hairline dividers. */
+  divider: '#E6E4DE',
+} as const;
+
+/**
+ * Signal design tokens. Prefer these over APP_COLORS for new code.
+ * The APP_COLORS export is kept so existing screens continue to resolve.
+ */
+export const SIGNAL = {
+  paper: '#FAFAF7',
+  ink: '#141416',
+  accent: '#EA2F14',
+  mutedInk: '#8A8986',
+  divider: '#E6E4DE',
+  surface: '#FFFFFF',
+  onInterval: '#FFFFFF',
 } as const;
 
 // ---------------------------------------------------------------------------
-// Interval color palette (12 colors)
+// Interval color palette (12 colors, colorblind-retuned + glyph)
 // ---------------------------------------------------------------------------
 
+export type IntervalGlyph =
+  | 'circle'
+  | 'triangle'
+  | 'square'
+  | 'diamond'
+  | 'hexagon'
+  | 'pentagon'
+  | 'plus'
+  | 'star'
+  | 'chevron'
+  | 'wave'
+  | 'line'
+  | 'dot';
+
 export interface IntervalColor {
+  /** Stable id used in palette lookups. */
+  id: string;
   /** Human-readable label shown in the color picker. */
   label: string;
-
+  /** One-character short form used in compact UI. */
+  short: string;
   /** Hex color value. */
   hex: string;
-
-  /** Text color to use when this color is the background (white or dark). */
+  /** Text color to use when this color is the background. */
   textColor: string;
+  /** Non-color glyph for colorblind redundancy. */
+  glyph: IntervalGlyph;
 }
 
 /**
- * The 12 interval colors defined in the PRD appendix.
- * Order matches the PRD table and is the display order in the color picker.
- *
- * All colors use white text except Off-White which uses dark text
- * for WCAG AA contrast compliance.
+ * 12 interval colors — colorblind-retuned. Each color ships with a glyph so
+ * UI never relies on hue alone. Red↔green pair is buffered by orange/amber
+ * and lime/teal to stay safe under deuteranopia and protanopia.
  */
 export const INTERVAL_COLORS: readonly IntervalColor[] = [
-  { label: 'Schlag Red',    hex: '#E63946', textColor: '#FFFFFF' },
-  { label: 'Ember Orange',  hex: '#F4722B', textColor: '#FFFFFF' },
-  { label: 'Solar Yellow',  hex: '#F6AE2D', textColor: '#FFFFFF' },
-  { label: 'Sprint Green',  hex: '#2DC653', textColor: '#FFFFFF' },
-  { label: 'Teal',          hex: '#00B4D8', textColor: '#FFFFFF' },
-  { label: 'Steel Blue',    hex: '#2563EB', textColor: '#FFFFFF' },
-  { label: 'Indigo',        hex: '#4338CA', textColor: '#FFFFFF' },
-  { label: 'Violet',        hex: '#7C3AED', textColor: '#FFFFFF' },
-  { label: 'Pink',          hex: '#DB2777', textColor: '#FFFFFF' },
-  { label: 'Slate',         hex: '#475569', textColor: '#FFFFFF' },
-  { label: 'Zinc',          hex: '#71717A', textColor: '#FFFFFF' },
-  { label: 'Off-White',     hex: '#E2E8F0', textColor: '#1A1A2E' },
+  { id: 'red',    label: 'Red',    short: 'R', hex: '#E5484D', textColor: '#FFFFFF', glyph: 'circle'   },
+  { id: 'orange', label: 'Orange', short: 'O', hex: '#F76B15', textColor: '#FFFFFF', glyph: 'triangle' },
+  { id: 'amber',  label: 'Amber',  short: 'A', hex: '#E2A907', textColor: '#FFFFFF', glyph: 'square'   },
+  { id: 'lime',   label: 'Lime',   short: 'L', hex: '#99D52A', textColor: '#141416', glyph: 'diamond'  },
+  { id: 'teal',   label: 'Teal',   short: 'T', hex: '#12A594', textColor: '#FFFFFF', glyph: 'hexagon'  },
+  { id: 'cyan',   label: 'Cyan',   short: 'C', hex: '#00A2C7', textColor: '#FFFFFF', glyph: 'pentagon' },
+  { id: 'blue',   label: 'Blue',   short: 'B', hex: '#3E63DD', textColor: '#FFFFFF', glyph: 'plus'     },
+  { id: 'indigo', label: 'Indigo', short: 'I', hex: '#5B5BD6', textColor: '#FFFFFF', glyph: 'star'     },
+  { id: 'violet', label: 'Violet', short: 'V', hex: '#6E56CF', textColor: '#FFFFFF', glyph: 'chevron'  },
+  { id: 'pink',   label: 'Pink',   short: 'P', hex: '#D6409F', textColor: '#FFFFFF', glyph: 'wave'     },
+  { id: 'slate',  label: 'Slate',  short: 'S', hex: '#5F6877', textColor: '#FFFFFF', glyph: 'line'     },
+  { id: 'bone',   label: 'Bone',   short: 'N', hex: '#D8D4CA', textColor: '#141416', glyph: 'dot'      },
 ] as const;
 
 /**
- * Quick-lookup set of interval hex values for validation.
+ * Legacy → Signal hex remap. Sequences saved before the redesign store the
+ * old palette hexes on their intervals; we translate on read so glyph lookup,
+ * text-color lookup, and picker-highlight all resolve correctly.
  */
+const LEGACY_HEX_REMAP: Record<string, string> = {
+  '#E63946': '#E5484D', // Schlag Red    → red
+  '#F4722B': '#F76B15', // Ember Orange  → orange
+  '#F6AE2D': '#E2A907', // Solar Yellow  → amber
+  '#2DC653': '#99D52A', // Sprint Green  → lime
+  '#00B4D8': '#12A594', // Teal          → teal
+  '#2563EB': '#3E63DD', // Steel Blue    → blue
+  '#4338CA': '#5B5BD6', // Indigo        → indigo
+  '#7C3AED': '#6E56CF', // Violet        → violet
+  '#DB2777': '#D6409F', // Pink          → pink
+  '#475569': '#5F6877', // Slate         → slate
+  '#71717A': '#5F6877', // Zinc          → slate
+  '#E2E8F0': '#D8D4CA', // Off-White     → bone
+};
+
+/** Normalize a stored interval hex to the current palette. */
+export function normalizeIntervalHex(hex: string): string {
+  const up = hex.toUpperCase();
+  return LEGACY_HEX_REMAP[up] ?? hex;
+}
+
+/** Quick-lookup set of interval hex values for validation (current palette only). */
 export const INTERVAL_HEX_SET: ReadonlySet<string> = new Set(
   INTERVAL_COLORS.map((c) => c.hex),
 );
 
-/**
- * Default interval color (Schlag Red) used for new intervals.
- */
+/** Default interval color (red) used for new intervals. */
 export const DEFAULT_INTERVAL_COLOR = INTERVAL_COLORS[0].hex;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Returns the appropriate text color (white or dark) for a given
- * interval background hex color.
- *
- * If the hex is not in the palette, falls back to a relative-luminance
- * calculation per WCAG guidelines.
- */
-export function getTextColorForInterval(hex: string): string {
-  // Fast path: look up in the palette
-  const paletteEntry = INTERVAL_COLORS.find(
-    (c) => c.hex.toLowerCase() === hex.toLowerCase(),
-  );
-  if (paletteEntry) {
-    return paletteEntry.textColor;
-  }
+/** Find the palette entry for a given hex (with legacy remapping). */
+export function getIntervalByHex(hex: string): IntervalColor | undefined {
+  const normalized = normalizeIntervalHex(hex).toLowerCase();
+  return INTERVAL_COLORS.find((c) => c.hex.toLowerCase() === normalized);
+}
 
-  // Fallback: compute relative luminance and pick white or dark
-  return relativeLuminance(hex) > 0.179 ? '#1A1A2E' : '#FFFFFF';
+/** Find the palette entry by id. */
+export function getIntervalById(id: string): IntervalColor | undefined {
+  return INTERVAL_COLORS.find((c) => c.id === id);
+}
+
+/** Glyph for a given interval hex (normalized). */
+export function getGlyphForInterval(hex: string): IntervalGlyph {
+  return getIntervalByHex(hex)?.glyph ?? 'circle';
 }
 
 /**
- * Compute relative luminance of a hex color per WCAG 2.1.
- * Returns a value between 0 (black) and 1 (white).
+ * Returns the appropriate text color (white or dark) for a given
+ * interval background hex. Falls back to WCAG relative-luminance for
+ * hexes outside the palette.
  */
+export function getTextColorForInterval(hex: string): string {
+  const entry = getIntervalByHex(hex);
+  if (entry) return entry.textColor;
+  return relativeLuminance(hex) > 0.5 ? '#141416' : '#FFFFFF';
+}
+
+/** Compute WCAG 2.1 relative luminance, 0 (black) → 1 (white). */
 function relativeLuminance(hex: string): number {
   const sanitized = hex.replace('#', '');
   const r = parseInt(sanitized.substring(0, 2), 16) / 255;

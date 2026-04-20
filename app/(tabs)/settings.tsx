@@ -140,8 +140,9 @@ function ThemeSegmentedControl({
     <View style={styles.row}>
       <Text style={styles.rowLabel}>Workout theme</Text>
       <View style={styles.segmentedControl}>
-        {THEME_OPTIONS.map((option) => {
+        {THEME_OPTIONS.map((option, idx) => {
           const isActive = selected === option.value;
+          const isLast = idx === THEME_OPTIONS.length - 1;
           return (
             <Pressable
               key={option.value}
@@ -151,6 +152,7 @@ function ThemeSegmentedControl({
               accessibilityState={{ selected: isActive }}
               style={[
                 styles.segmentedOption,
+                isLast && styles.segmentedOptionLast,
                 isActive && styles.segmentedOptionActive,
               ]}
             >
@@ -181,8 +183,9 @@ function GetReadySegmentedControl({
     <View style={styles.row}>
       <Text style={styles.rowLabel}>Get ready countdown</Text>
       <View style={styles.segmentedControl}>
-        {GET_READY_OPTIONS.map((option) => {
+        {GET_READY_OPTIONS.map((option, idx) => {
           const isActive = selected === option.value;
+          const isLast = idx === GET_READY_OPTIONS.length - 1;
           return (
             <Pressable
               key={option.value}
@@ -192,6 +195,7 @@ function GetReadySegmentedControl({
               accessibilityState={{ selected: isActive }}
               style={[
                 styles.segmentedOption,
+                isLast && styles.segmentedOptionLast,
                 isActive && styles.segmentedOptionActive,
               ]}
             >
@@ -812,34 +816,38 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.lg,
   },
 
-  // Segmented control
+  // Segmented control — Signal flat bordered pills
   segmentedControl: {
     flexDirection: 'row',
-    backgroundColor: APP_COLORS.divider,
-    borderRadius: LAYOUT.borderRadius,
-    padding: 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: APP_COLORS.divider,
+    flexShrink: 0,
   },
   segmentedOption: {
-    flex: 1,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.xs + 2,
+    paddingHorizontal: SPACING.md,
     alignItems: 'center',
-    borderRadius: LAYOUT.borderRadius - 2,
+    justifyContent: 'center',
+    minWidth: 44,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: APP_COLORS.divider,
+  },
+  segmentedOptionLast: {
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: APP_COLORS.divider,
   },
   segmentedOptionActive: {
-    backgroundColor: APP_COLORS.surface,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
-    elevation: 1,
+    backgroundColor: APP_COLORS.textPrimary,
   },
   segmentedOptionText: {
     fontSize: FONT_SIZE.caption,
     fontWeight: FONT_WEIGHT.medium,
     color: APP_COLORS.textSecondary,
+    letterSpacing: 0.3,
   },
   segmentedOptionTextActive: {
-    color: APP_COLORS.textPrimary,
+    color: '#FFFFFF',
     fontWeight: FONT_WEIGHT.semibold,
   },
 

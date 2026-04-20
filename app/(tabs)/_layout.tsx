@@ -1,12 +1,19 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Tabs } from 'expo-router';
-import { Text, View, Pressable, StyleSheet } from 'react-native';
+import { Text, View, Pressable, StyleSheet, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { useTimerStore } from '@/stores/timerStore';
+import { SIGNAL, normalizeIntervalHex } from '@/constants/colors';
+import {
+  FONT_FAMILY,
+  FONT_SIZE,
+  FONT_WEIGHT,
+  LETTER_SPACING,
+} from '@/constants/typography';
 
 // ---------------------------------------------------------------------------
-// Floating Active Workout Pill
+// Floating Active Workout Pill — Signal styling
 // ---------------------------------------------------------------------------
 
 function ActiveWorkoutPill() {
@@ -23,6 +30,10 @@ function ActiveWorkoutPill() {
 
   if (!isActive || !activeSequenceId) return null;
 
+  const intervalHex = tickData
+    ? normalizeIntervalHex(tickData.currentInterval.color)
+    : SIGNAL.accent;
+
   return (
     <Pressable
       onPress={handlePress}
@@ -34,14 +45,15 @@ function ActiveWorkoutPill() {
       }
       style={({ pressed }) => [
         styles.pill,
+        { backgroundColor: intervalHex },
         pressed && styles.pillPressed,
       ]}
     >
       <View style={styles.pillDot} />
       <Text style={styles.pillText} numberOfLines={1}>
         {tickData
-          ? `${tickData.currentInterval.name}  ${tickData.formattedTime}`
-          : 'Workout in progress'}
+          ? `${tickData.currentInterval.name.toUpperCase()}  ${tickData.formattedTime}`
+          : 'WORKOUT IN PROGRESS'}
       </Text>
     </Pressable>
   );
@@ -51,27 +63,63 @@ function ActiveWorkoutPill() {
 // Tab Layout
 // ---------------------------------------------------------------------------
 
+/**
+ * Expo Router's bottom tab bar on web ignores tabBarStyle.height because
+ * React Native Web's dynamically-injected stylesheet has higher specificity
+ * than our JS styles. Inject a high-specificity override at runtime.
+ */
+function useWebTabBarFix() {
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const id = 'schlag-tabbar-fix';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `
+      html, body, #root, body > div:first-child {
+        height: 100% !important;
+      }
+      div[role="tablist"] {
+        min-height: 72px !important;
+        padding-top: 10px !important;
+        padding-bottom: 16px !important;
+        flex: 0 0 auto !important;
+      }
+      div[role="tablist"] > [role="tab"] {
+        padding-top: 4px !important;
+        padding-bottom: 6px !important;
+      }
+      div[role="tablist"] > [role="tab"] * {
+        overflow: visible !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
+}
+
 export default function TabLayout() {
+  useWebTabBarFix();
   return (
     <View style={styles.root}>
       <Tabs
         screenOptions={{
-          tabBarActiveTintColor: '#E63946',
-          tabBarInactiveTintColor: '#94A3B8',
+          headerShown: false,
+          tabBarActiveTintColor: SIGNAL.ink,
+          tabBarInactiveTintColor: SIGNAL.mutedInk,
           tabBarStyle: styles.tabBar,
           tabBarLabelStyle: styles.tabBarLabel,
-          headerStyle: styles.header,
-          headerTitleStyle: styles.headerTitle,
-          headerTintColor: '#1A1A2E',
+          tabBarItemStyle: styles.tabBarItem,
+          tabBarShowLabel: true,
+          tabBarLabelPosition: 'below-icon',
+          tabBarActiveBackgroundColor: 'transparent',
         }}
       >
         <Tabs.Screen
           name="index"
           options={{
             title: 'Library',
-            headerTitle: 'Schlag',
-            tabBarIcon: ({ color }) => (
-              <Text style={[styles.tabIcon, { color }]}>{'\u25B6'}</Text>
+            tabBarIcon: ({ focused }) => (
+              <TabIndicator focused={focused} />
             ),
           }}
         />
@@ -79,8 +127,8 @@ export default function TabLayout() {
           name="history"
           options={{
             title: 'History',
-            tabBarIcon: ({ color }) => (
-              <Text style={[styles.tabIcon, { color }]}>{'\uD83D\uDCCA'}</Text>
+            tabBarIcon: ({ focused }) => (
+              <TabIndicator focused={focused} />
             ),
           }}
         />
@@ -88,89 +136,100 @@ export default function TabLayout() {
           name="settings"
           options={{
             title: 'Settings',
-            tabBarIcon: ({ color }) => (
-              <Text style={[styles.tabIcon, { color }]}>{'\u2699'}</Text>
+            tabBarIcon: ({ focused }) => (
+              <TabIndicator focused={focused} />
             ),
           }}
         />
-
-        {/* Hide the legacy active tab from the tab bar (file still exists for deep links). */}
-        <Tabs.Screen
-          name="active"
-          options={{
-            href: null,
-          }}
-        />
+        <Tabs.Screen name="active" options={{ href: null }} />
       </Tabs>
 
-      {/* Floating pill above the tab bar */}
       <ActiveWorkoutPill />
     </View>
   );
 }
 
+/**
+ * Top-border active indicator — Signal uses a thin top rule rather than a
+ * filled pill or background shading.
+ */
+function TabIndicator({ focused }: { focused: boolean }) {
+  return (
+    <View
+      style={[
+        styles.tabIndicator,
+        focused && { backgroundColor: SIGNAL.ink },
+      ]}
+    />
+  );
+}
+
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-  },
+  root: { flex: 1, backgroundColor: SIGNAL.paper },
   tabBar: {
-    backgroundColor: '#FFFFFF',
-    borderTopColor: '#E2E8F0',
-    height: 56,
+    backgroundColor: SIGNAL.paper,
+    borderTopColor: SIGNAL.divider,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    height:
+      Platform.OS === 'ios' ? 86 : Platform.OS === 'android' ? 72 : 88,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+    elevation: 0,
+    shadowOpacity: 0,
   },
   tabBarLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.caption,
+    fontWeight: FONT_WEIGHT.medium,
+    letterSpacing: 0.2,
+    marginTop: 4,
+    lineHeight: FONT_SIZE.caption * 1.2,
   },
-  tabIcon: {
-    fontSize: 20,
+  tabBarItem: {
+    paddingTop: 0,
+    paddingBottom: 0,
   },
-  header: {
-    backgroundColor: '#F8FAFC',
-  },
-  headerTitle: {
-    fontWeight: '700',
-    fontSize: 20,
-    color: '#1A1A2E',
+  tabIndicator: {
+    width: 24,
+    height: 2,
+    marginTop: 2,
+    marginBottom: 2,
+    backgroundColor: 'transparent',
   },
 
   // Active workout pill
   pill: {
     position: 'absolute',
-    bottom: 56 + 8, // tab bar height + gap
+    bottom:
+      (Platform.OS === 'ios' ? 86 : Platform.OS === 'android' ? 72 : 88) + 8,
     alignSelf: 'center',
-    left: '15%',
-    right: '15%',
-    height: 48,
-    backgroundColor: '#E63946',
-    borderRadius: 24,
+    left: '12%',
+    right: '12%',
+    height: 42,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
-    // Shadow
-    shadowColor: '#E63946',
+    gap: 10,
+    borderRadius: 0,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
     elevation: 6,
   },
-  pillPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
+  pillPressed: { opacity: 0.92 },
   pillDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
     backgroundColor: '#FFFFFF',
-    marginRight: 10,
-    opacity: 0.9,
   },
   pillText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.caption,
+    fontWeight: FONT_WEIGHT.semibold,
+    letterSpacing: LETTER_SPACING.caption,
     flexShrink: 1,
   },
 });

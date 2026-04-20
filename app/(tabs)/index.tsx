@@ -1,8 +1,9 @@
 /**
- * Library (Home) Screen for Schlag.
+ * Library (Home) Screen for Schlag — Signal direction.
  *
- * Displays the user's sequence library as a scrollable card list with search,
- * sort toggling, pull-to-refresh, and a FAB for creating new sequences.
+ * Editorial header with wordmark + date. Quick-start grid above an indexed
+ * list of saved sequences (row per sequence, left color bar + glyph, tag +
+ * rounds eyebrow, name, DSEG7 total duration on the right).
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -22,30 +23,22 @@ import { useRouter } from 'expo-router';
 
 import { useSequenceStore } from '@/stores/sequenceStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { APP_COLORS } from '@/constants/colors';
-import { FONT_SIZE, FONT_WEIGHT } from '@/constants/typography';
-import { LAYOUT, SPACING } from '@/constants/layout';
-import { FAB } from '@/components/FAB';
-import { Button } from '@/components/Button';
-import { IconButton } from '@/components/IconButton';
+import { SIGNAL, getIntervalByHex } from '@/constants/colors';
+import {
+  FONT_FAMILY,
+  FONT_SIZE,
+  FONT_WEIGHT,
+  LETTER_SPACING,
+} from '@/constants/typography';
+import { SPACING } from '@/constants/layout';
+import { Wordmark } from '@/components/Wordmark';
+import { Glyph } from '@/components/Glyph';
 import type { Sequence } from '@/types';
 
 // ---------------------------------------------------------------------------
-// Duration formatting helper
+// Duration helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Computes the total workout duration for a sequence including repeats and
- * rest between sets, and returns a human-readable string.
- *
- * Formula:
- *   singleSetDuration = sum of all interval durations
- *   totalRestDuration = restBetweenSets * (repeats - 1)   [no rest after last set]
- *   total = singleSetDuration * repeats + totalRestDuration
- *
- * For infinite mode (repeat_count === 0), shows the single-set duration with
- * an infinity symbol.
- */
 export function formatTotalDuration(sequence: Sequence): string {
   const singleSetSeconds = sequence.intervals.reduce(
     (sum, interval) => sum + interval.duration_seconds,
@@ -53,8 +46,7 @@ export function formatTotalDuration(sequence: Sequence): string {
   );
 
   if (sequence.repeat_count === 0) {
-    // Infinite mode -- show single set duration with infinity indicator
-    return `${formatSeconds(singleSetSeconds)} x \u221E`;
+    return `${formatSeconds(singleSetSeconds)} \u00d7 \u221E`;
   }
 
   const totalRestSeconds =
@@ -64,124 +56,120 @@ export function formatTotalDuration(sequence: Sequence): string {
   return formatSeconds(totalSeconds);
 }
 
-/** Format a number of seconds into H:MM:SS or MM:SS. */
 function formatSeconds(totalSeconds: number): string {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-
   if (hours > 0) {
     return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   }
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+/** Heuristic tag derived from sequence shape. */
+function tagFor(sequence: Sequence): string {
+  const names = sequence.intervals.map((i) => i.name.toLowerCase());
+  const hasWork = names.some((n) => n.includes('work') || n.includes('sprint') || n.includes('set'));
+  const hasRest = names.some((n) => n.includes('rest') || n.includes('recover'));
+  if (sequence.intervals.length === 2 && hasWork && hasRest) {
+    const work = sequence.intervals.find((i) => /work|sprint|set/i.test(i.name));
+    if (work?.duration_seconds === 20 && sequence.repeat_count === 8) return 'TABATA';
+    if (sequence.rest_between_sets_seconds === 0 && work) return 'INTERVAL';
+  }
+  if (sequence.intervals.length === 1) return 'AMRAP';
+  if (sequence.intervals.length > 2) return 'CIRCUIT';
+  return 'INTERVAL';
+}
+
+function relativeDate(iso: string | null): string | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  const now = Date.now();
+  const days = Math.round((now - then) / 86_400_000);
+  if (days <= 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.round(days / 7)} weeks ago`;
+  return `${Math.round(days / 30)} months ago`;
+}
+
+function formatToday(): string {
+  const d = new Date();
+  const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
+  const day = d.getDate();
+  const month = d.toLocaleDateString('en-US', { month: 'short' });
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${weekday} ${day} ${month} · ${hh}:${mm}`;
+}
+
 // ---------------------------------------------------------------------------
-// Sequence Card component
+// Quick-start tiles
 // ---------------------------------------------------------------------------
 
-interface SequenceCardProps {
+import type { IntervalGlyph } from '@/constants';
+
+const QUICK_START_TILES: {
+  label: string;
+  color: string;
+  glyph: IntervalGlyph;
+  blurb: string;
+}[] = [
+  { label: 'Tabata', color: '#E5484D', glyph: 'circle',   blurb: '8 × 20/10s' },
+  { label: 'EMOM',   color: '#F76B15', glyph: 'triangle', blurb: 'every minute' },
+  { label: 'AMRAP',  color: '#12A594', glyph: 'hexagon',  blurb: 'as many rounds' },
+  { label: 'Rest',   color: '#5B5BD6', glyph: 'star',     blurb: 'heavy-set timer' },
+];
+
+// ---------------------------------------------------------------------------
+// Row component
+// ---------------------------------------------------------------------------
+
+interface SequenceRowProps {
   sequence: Sequence;
+  index: number;
   onStart: (id: string) => void;
-  onEdit: (id: string) => void;
   onLongPress: (sequence: Sequence) => void;
 }
 
-const SequenceCard = React.memo<SequenceCardProps>(
-  ({ sequence, onStart, onEdit, onLongPress }) => {
-    const colorStrip = sequence.intervals.slice(0, 5);
+const SequenceRow = React.memo<SequenceRowProps>(
+  ({ sequence, index, onStart, onLongPress }) => {
+    const firstColor = sequence.intervals[0]?.color ?? '#E5484D';
+    const glyph = getIntervalByHex(firstColor)?.glyph ?? 'circle';
+    const displayHex = getIntervalByHex(firstColor)?.hex ?? firstColor;
     const totalDuration = formatTotalDuration(sequence);
+    const tag = tagFor(sequence);
+    const rounds = sequence.repeat_count === 0 ? '×∞' : `×${sequence.repeat_count}`;
 
-    const handlePress = useCallback(() => {
-      onEdit(sequence.id);
-    }, [onEdit, sequence.id]);
-
-    const handleStart = useCallback(() => {
-      onStart(sequence.id);
-    }, [onStart, sequence.id]);
-
-    const handleLongPress = useCallback(() => {
-      onLongPress(sequence);
-    }, [onLongPress, sequence]);
-
-    const repeatLabel =
-      sequence.repeat_count === 0
-        ? '\u221E repeats'
-        : sequence.repeat_count === 1
-          ? '1 round'
-          : `${sequence.repeat_count} rounds`;
+    const handleStart = useCallback(() => onStart(sequence.id), [onStart, sequence.id]);
+    const handleLongPress = useCallback(() => onLongPress(sequence), [onLongPress, sequence]);
 
     return (
-      <View
-        accessibilityLabel={`${sequence.name}. ${totalDuration}. Tap to edit, long press for options.`}
-        // @ts-expect-error — onClick is valid on web but not typed in RN
-        onClick={Platform.OS === 'web' ? handlePress : undefined}
-        onStartShouldSetResponder={Platform.OS !== 'web' ? () => true : undefined}
-        onResponderRelease={Platform.OS !== 'web' ? handlePress : undefined}
-        style={[
-          styles.card,
-          Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
-        ]}
+      <Pressable
+        onPress={handleStart}
+        onLongPress={handleLongPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${sequence.name}. ${totalDuration}. Tap to start, long press for edit/duplicate/delete.`}
+        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       >
-        {/* Color strip on left edge */}
-        <View style={styles.colorStrip} accessibilityLabel="Interval colors">
-          {colorStrip.map((interval, index) => (
-            <View
-              key={interval.id}
-              style={[
-                styles.colorStripSegment,
-                { backgroundColor: interval.color },
-                index === 0 && styles.colorStripTop,
-                index === colorStrip.length - 1 && styles.colorStripBottom,
-              ]}
-            />
-          ))}
+        <Text style={styles.rowIndex}>{String(index + 1).padStart(2, '0')}</Text>
+        <View style={[styles.rowColorBar, { backgroundColor: displayHex }]}>
+          <Glyph kind={glyph} size={10} color="#FFFFFF" />
         </View>
 
-        {/* Card content */}
-        <View style={styles.cardContent}>
-          <Text style={styles.cardName} numberOfLines={1}>
-            {sequence.name}
-          </Text>
-
-          {sequence.description.length > 0 && (
-            <Text style={styles.cardDescription} numberOfLines={2}>
-              {sequence.description}
-            </Text>
-          )}
-
-          <View style={styles.cardMeta}>
-            <Text style={styles.cardMetaText}>
-              {totalDuration}
-            </Text>
-            <Text style={styles.cardMetaDot}>{'\u00B7'}</Text>
-            <Text style={styles.cardMetaText}>
-              {sequence.intervals.length}{' '}
-              {sequence.intervals.length === 1 ? 'interval' : 'intervals'}
-            </Text>
-            <Text style={styles.cardMetaDot}>{'\u00B7'}</Text>
-            <Text style={styles.cardMetaText}>{repeatLabel}</Text>
-          </View>
-
-          <Pressable
-            onPress={handleStart}
-            accessibilityRole="button"
-            accessibilityLabel={`Start ${sequence.name}`}
-            style={({ pressed }) => [
-              styles.startButton,
-              pressed && styles.startButtonPressed,
-            ]}
-          >
-            <Text style={styles.startButtonText}>Start</Text>
-          </Pressable>
+        <View style={styles.rowMain}>
+          <Text style={styles.rowEyebrow}>{tag} · {rounds}</Text>
+          <Text style={styles.rowName} numberOfLines={1}>{sequence.name}</Text>
         </View>
-      </View>
+
+        <Text style={styles.rowDuration}>{totalDuration}</Text>
+      </Pressable>
     );
   },
 );
 
 // ---------------------------------------------------------------------------
-// Empty state component
+// Empty state
 // ---------------------------------------------------------------------------
 
 function EmptyState({ onCreatePress }: { onCreatePress: () => void }) {
@@ -190,14 +178,16 @@ function EmptyState({ onCreatePress }: { onCreatePress: () => void }) {
       <Text style={styles.emptyIcon}>+</Text>
       <Text style={styles.emptyTitle}>No sequences yet</Text>
       <Text style={styles.emptySubtitle}>
-        Create your first sequence to get started
+        Build your first sequence. Tabata, EMOM, heavy-set rest — your call.
       </Text>
-      <Button
-        title="Create your first sequence"
+      <Pressable
         onPress={onCreatePress}
-        style={styles.emptyCta}
+        accessibilityRole="button"
         accessibilityLabel="Create your first sequence"
-      />
+        style={({ pressed }) => [styles.emptyCta, pressed && styles.emptyCtaPressed]}
+      >
+        <Text style={styles.emptyCtaText}>＋ NEW SEQUENCE</Text>
+      </Pressable>
     </View>
   );
 }
@@ -209,7 +199,6 @@ function EmptyState({ onCreatePress }: { onCreatePress: () => void }) {
 export default function LibraryScreen() {
   const router = useRouter();
 
-  // Store access
   const loadSequences = useSequenceStore((s) => s.loadFromStorage);
   const isLoaded = useSequenceStore((s) => s.isLoaded);
   const getSortedSequences = useSequenceStore((s) => s.getSortedSequences);
@@ -222,25 +211,17 @@ export default function LibraryScreen() {
   const loadSettings = useSettingsStore((s) => s.loadFromStorage);
   const settingsLoaded = useSettingsStore((s) => s.isLoaded);
 
-  // Local state
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
 
-  // Hydrate stores on mount
   useEffect(() => {
-    if (!isLoaded) {
-      loadSequences();
-    }
-    if (!settingsLoaded) {
-      loadSettings();
-    }
+    if (!isLoaded) loadSequences();
+    if (!settingsLoaded) loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Derive sorted + filtered list
   const sortedSequences = useMemo(() => {
-    // We depend on `sequences` so that the memo recomputes on mutations.
-    // `getSortedSequences` reads from the store directly.
     void sequences;
     return getSortedSequences();
   }, [sequences, getSortedSequences, sortOrder]);
@@ -248,53 +229,52 @@ export default function LibraryScreen() {
   const filteredSequences = useMemo(() => {
     if (searchQuery.trim().length === 0) return sortedSequences;
     const query = searchQuery.toLowerCase();
-    return sortedSequences.filter((seq) =>
-      seq.name.toLowerCase().includes(query),
-    );
+    return sortedSequences.filter((seq) => seq.name.toLowerCase().includes(query));
   }, [sortedSequences, searchQuery]);
 
-  // Callbacks
+  const subtitle = useMemo(() => {
+    const count = sequences.length;
+    const last = sequences
+      .filter((s) => s.last_used_at)
+      .sort(
+        (a, b) =>
+          new Date(b.last_used_at!).getTime() - new Date(a.last_used_at!).getTime(),
+      )[0];
+    if (count === 0) return 'No sequences yet.';
+    const noun = count === 1 ? 'sequence' : 'sequences';
+    if (!last) return `${count} ${noun}. No sessions logged yet.`;
+    return `${count} ${noun}. Last session ${relativeDate(last.last_used_at)}, ${last.name}.`;
+  }, [sequences]);
+
   const handleStartWorkout = useCallback(
-    (id: string) => {
-      router.push(`/workout/${id}` as any);
-    },
+    (id: string) => router.push(`/workout/${id}` as any),
     [router],
   );
-
-  const handleEditSequence = useCallback(
-    (id: string) => {
-      router.push(`/builder/${id}` as any);
-    },
-    [router],
-  );
-
   const handleCreateSequence = useCallback(() => {
     router.push('/builder/new' as any);
   }, [router]);
 
+  const handleQuickStart = useCallback(
+    (label: string) => {
+      router.push(`/templates?seed=${encodeURIComponent(label)}` as any);
+    },
+    [router],
+  );
+
   const handleLongPress = useCallback(
     (sequence: Sequence) => {
       if (Platform.OS === 'web') {
-        // On web, use a simple approach -- no native action sheets.
-        // We'll show an alert-style confirm for each option.
-        const action = prompt(
-          `"${sequence.name}"\n\nType "duplicate" to duplicate or "delete" to delete:`,
+        const action = window.prompt(
+          `"${sequence.name}"\n\nType "edit", "duplicate", or "delete":`,
         );
-        if (action === 'duplicate') {
-          duplicateSequence(sequence.id);
-        } else if (action === 'delete') {
-          deleteSequence(sequence.id);
-        }
+        if (action === 'edit') router.push(`/builder/${sequence.id}` as any);
+        else if (action === 'duplicate') duplicateSequence(sequence.id);
+        else if (action === 'delete') deleteSequence(sequence.id);
         return;
       }
-
       Alert.alert(sequence.name, 'Choose an action', [
-        {
-          text: 'Duplicate',
-          onPress: () => {
-            duplicateSequence(sequence.id);
-          },
-        },
+        { text: 'Edit', onPress: () => router.push(`/builder/${sequence.id}` as any) },
+        { text: 'Duplicate', onPress: () => duplicateSequence(sequence.id) },
         {
           text: 'Delete',
           style: 'destructive',
@@ -316,13 +296,12 @@ export default function LibraryScreen() {
         { text: 'Cancel', style: 'cancel' },
       ]);
     },
-    [duplicateSequence, deleteSequence],
+    [duplicateSequence, deleteSequence, router],
   );
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     loadSequences();
-    // Simulate a brief delay so the spinner is visible
     setTimeout(() => setRefreshing(false), 300);
   }, [loadSequences]);
 
@@ -334,91 +313,141 @@ export default function LibraryScreen() {
     router.push('/templates' as any);
   }, [router]);
 
-  // Render
   const renderItem = useCallback(
-    ({ item }: ListRenderItemInfo<Sequence>) => (
-      <SequenceCard
+    ({ item, index }: ListRenderItemInfo<Sequence>) => (
+      <SequenceRow
         sequence={item}
+        index={index}
         onStart={handleStartWorkout}
-        onEdit={handleEditSequence}
         onLongPress={handleLongPress}
       />
     ),
-    [handleStartWorkout, handleEditSequence, handleLongPress],
+    [handleStartWorkout, handleLongPress],
   );
 
   const keyExtractor = useCallback((item: Sequence) => item.id, []);
 
   const listHeader = useMemo(
     () => (
-      <View style={styles.listHeader}>
-        {/* Search bar */}
-        <View style={styles.searchContainer}>
-          <Text style={styles.searchIcon}>{'🔍'}</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search sequences..."
-            placeholderTextColor={APP_COLORS.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            accessibilityLabel="Search sequences"
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-          />
-          {searchQuery.length > 0 && (
-            <IconButton
-              icon={<Text style={styles.clearIcon}>{'✕'}</Text>}
-              onPress={() => setSearchQuery('')}
-              size={32}
-              accessibilityLabel="Clear search"
-            />
-          )}
+      <View>
+        {/* Editorial header */}
+        <View style={styles.header}>
+          <View style={styles.headerRow}>
+            <Wordmark size={FONT_SIZE.displayHero} />
+            <Text style={styles.headerMeta}>{formatToday()}</Text>
+          </View>
+          <Text style={styles.headerSubtitle}>{subtitle}</Text>
         </View>
 
-        {/* Sort toggle + Templates button */}
-        <View style={styles.sortRow}>
-          <Text style={styles.sortLabel}>
-            {filteredSequences.length}{' '}
-            {filteredSequences.length === 1 ? 'sequence' : 'sequences'}
-          </Text>
-          <View style={styles.sortRowActions}>
-            <Pressable
-              onPress={handleOpenTemplates}
-              accessibilityRole="button"
-              accessibilityLabel="Browse workout templates"
-              style={({ pressed }) => [
-                styles.templatesButton,
-                pressed && styles.templatesButtonPressed,
-              ]}
-            >
-              <Text style={styles.templatesButtonText}>Templates</Text>
-            </Pressable>
-            <Pressable
-              onPress={toggleSortOrder}
-              accessibilityRole="button"
-              accessibilityLabel={`Sort by ${sortOrder === 'lastUsed' ? 'alphabetical' : 'last used'}`}
-              style={({ pressed }) => [
-                styles.sortButton,
-                pressed && styles.sortButtonPressed,
-              ]}
-            >
-              <Text style={styles.sortButtonText}>
-                {sortOrder === 'lastUsed' ? 'Last Used' : 'A-Z'}
-              </Text>
-              <Text style={styles.sortArrow}>{'\u21C5'}</Text>
-            </Pressable>
+        {/* Quick-start grid */}
+        <View style={styles.section}>
+          <Text style={styles.eyebrow}>Quick start</Text>
+          <View style={styles.quickStartGrid}>
+            {QUICK_START_TILES.map((tile) => (
+              <Pressable
+                key={tile.label}
+                onPress={() => handleQuickStart(tile.label)}
+                accessibilityRole="button"
+                accessibilityLabel={`Quick start ${tile.label}`}
+                style={({ pressed }) => [
+                  styles.quickTile,
+                  pressed && styles.quickTilePressed,
+                ]}
+              >
+                <View style={styles.quickTileTop}>
+                  <View style={[styles.quickDot, { backgroundColor: tile.color }]} />
+                  <Glyph kind={tile.glyph} size={16} color={tile.color} />
+                </View>
+                <View>
+                  <Text style={styles.quickLabel}>{tile.label}</Text>
+                  <Text style={styles.quickBlurb}>{tile.blurb}</Text>
+                </View>
+              </Pressable>
+            ))}
           </View>
+        </View>
+
+        {/* Saved list header */}
+        <View style={[styles.section, styles.savedHeader]}>
+          <View style={styles.savedHeaderRow}>
+            <Text style={styles.eyebrow}>
+              Saved · {filteredSequences.length}
+            </Text>
+            <View style={styles.savedHeaderActions}>
+              <Pressable
+                onPress={() => setShowSearch((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel={showSearch ? 'Hide search' : 'Show search'}
+                hitSlop={8}
+              >
+                <Text style={styles.savedAction}>{showSearch ? 'Hide' : 'Search'}</Text>
+              </Pressable>
+              <Pressable
+                onPress={toggleSortOrder}
+                accessibilityRole="button"
+                accessibilityLabel="Toggle sort order"
+                hitSlop={8}
+              >
+                <Text style={styles.savedAction}>
+                  {sortOrder === 'lastUsed' ? 'Recent' : 'A–Z'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleOpenTemplates}
+                accessibilityRole="button"
+                accessibilityLabel="Open templates"
+                hitSlop={8}
+              >
+                <Text style={styles.savedAction}>Templates</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleCreateSequence}
+                accessibilityRole="button"
+                accessibilityLabel="Create new sequence"
+                hitSlop={8}
+              >
+                <Text style={[styles.savedAction, styles.savedActionAccent]}>
+                  ＋ New
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+          {showSearch && (
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search sequences"
+                placeholderTextColor={SIGNAL.mutedInk}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                accessibilityLabel="Search sequences"
+                returnKeyType="search"
+                autoCorrect={false}
+                autoCapitalize="none"
+                autoFocus
+              />
+            </View>
+          )}
         </View>
       </View>
     ),
-    [searchQuery, filteredSequences.length, sortOrder, toggleSortOrder, handleOpenTemplates],
+    [
+      subtitle,
+      searchQuery,
+      filteredSequences.length,
+      sortOrder,
+      showSearch,
+      toggleSortOrder,
+      handleOpenTemplates,
+      handleCreateSequence,
+      handleQuickStart,
+    ],
   );
 
   if (!isLoaded) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={styles.loadingText}>Loading…</Text>
       </View>
     );
   }
@@ -436,7 +465,7 @@ export default function LibraryScreen() {
           ListEmptyComponent={
             <View style={styles.noResultsContainer}>
               <Text style={styles.noResultsText}>
-                No sequences match "{searchQuery}"
+                No sequences match “{searchQuery}”.
               </Text>
             </View>
           }
@@ -445,18 +474,13 @@ export default function LibraryScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
-              tintColor={APP_COLORS.primary}
-              colors={[APP_COLORS.primary]}
+              tintColor={SIGNAL.accent}
+              colors={[SIGNAL.accent]}
             />
           }
           showsVerticalScrollIndicator={false}
         />
       )}
-
-      <FAB
-        onPress={handleCreateSequence}
-        accessibilityLabel="Create new sequence"
-      />
     </View>
   );
 }
@@ -466,188 +490,177 @@ export default function LibraryScreen() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: APP_COLORS.backgroundLight,
-  },
+  container: { flex: 1, backgroundColor: SIGNAL.paper },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: APP_COLORS.backgroundLight,
+    backgroundColor: SIGNAL.paper,
   },
-  loadingText: {
-    fontSize: FONT_SIZE.bodyLarge,
-    color: APP_COLORS.textMuted,
+  loadingText: { fontSize: FONT_SIZE.body, color: SIGNAL.mutedInk },
+  listContent: { paddingBottom: 40 },
+
+  // Header
+  header: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SIGNAL.divider,
   },
-  listContent: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: 100, // room for FAB
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  headerMeta: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.caption,
+    color: SIGNAL.mutedInk,
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.bodySmall,
+    color: SIGNAL.mutedInk,
+    marginTop: SPACING.xs,
+    maxWidth: 320,
+    lineHeight: FONT_SIZE.bodySmall * 1.4,
   },
 
-  // List header (search + sort)
-  listHeader: {
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.sm,
+  // Sections
+  section: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.lg },
+  eyebrow: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: LETTER_SPACING.eyebrow,
+    color: SIGNAL.mutedInk,
+    textTransform: 'uppercase',
+    marginBottom: SPACING.sm,
+    fontWeight: FONT_WEIGHT.medium,
   },
-  searchContainer: {
+
+  // Quick start tiles
+  quickStartGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: APP_COLORS.surface,
-    borderRadius: LAYOUT.borderRadius,
-    paddingHorizontal: SPACING.md,
-    height: 44,
-    borderWidth: 1,
-    borderColor: APP_COLORS.divider,
+    gap: SPACING.sm,
   },
-  searchIcon: {
-    fontSize: 14,
-    marginRight: SPACING.sm,
-  },
-  searchInput: {
+  quickTile: {
     flex: 1,
-    fontSize: FONT_SIZE.body,
-    color: APP_COLORS.textPrimary,
-    height: '100%',
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
+    minWidth: 0,
+    height: 112,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: SIGNAL.divider,
+    padding: SPACING.md,
+    justifyContent: 'space-between',
+    backgroundColor: SIGNAL.paper,
   },
-  clearIcon: {
-    fontSize: 14,
-    color: APP_COLORS.textMuted,
-  },
-  sortRow: {
+  quickTilePressed: { backgroundColor: '#F2EFE8' },
+  quickTileTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: SPACING.md,
   },
-  sortLabel: {
-    fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textMuted,
-    fontWeight: FONT_WEIGHT.medium,
-  },
-  sortRowActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  templatesButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: LAYOUT.borderRadius,
-    borderWidth: 1,
-    borderColor: APP_COLORS.primary,
-  },
-  templatesButtonPressed: {
-    backgroundColor: APP_COLORS.primary,
-  },
-  templatesButtonText: {
-    fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.primary,
+  quickDot: { width: 10, height: 10, borderRadius: 5 },
+  quickLabel: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.body + 2,
     fontWeight: FONT_WEIGHT.semibold,
+    letterSpacing: -0.3,
+    color: SIGNAL.ink,
   },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: LAYOUT.borderRadius,
-  },
-  sortButtonPressed: {
-    backgroundColor: APP_COLORS.divider,
-  },
-  sortButtonText: {
-    fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textSecondary,
-    fontWeight: FONT_WEIGHT.semibold,
-  },
-  sortArrow: {
-    fontSize: 14,
-    color: APP_COLORS.textSecondary,
-    marginLeft: 4,
+  quickBlurb: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow + 1,
+    color: SIGNAL.mutedInk,
+    marginTop: 2,
+    letterSpacing: 0.2,
   },
 
-  // Sequence card
-  card: {
+  // Saved header
+  savedHeader: { paddingTop: SPACING.xl },
+  savedHeaderRow: {
     flexDirection: 'row',
-    backgroundColor: APP_COLORS.surface,
-    borderRadius: LAYOUT.cardRadius,
-    marginTop: SPACING.md,
-    overflow: 'hidden',
-    // Shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12,
-    shadowRadius: 3,
-    elevation: 2,
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  cardPressed: {
-    opacity: 0.85,
-  },
-  colorStrip: {
-    width: 4,
-    flexDirection: 'column',
-  },
-  colorStripSegment: {
-    flex: 1,
-    minHeight: 8,
-  },
-  colorStripTop: {
-    borderTopLeftRadius: LAYOUT.cardRadius,
-  },
-  colorStripBottom: {
-    borderBottomLeftRadius: LAYOUT.cardRadius,
-  },
-  cardContent: {
-    flex: 1,
-    padding: SPACING.lg,
-  },
-  cardName: {
-    fontSize: FONT_SIZE.headingSmall,
-    fontWeight: FONT_WEIGHT.bold,
-    color: APP_COLORS.textPrimary,
-  },
-  cardDescription: {
-    fontSize: FONT_SIZE.body,
-    color: APP_COLORS.textSecondary,
-    marginTop: SPACING.xs,
-    lineHeight: FONT_SIZE.body * 1.4,
-  },
-  cardMeta: {
+  savedHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: SPACING.sm,
-    flexWrap: 'wrap',
+    gap: SPACING.md,
   },
-  cardMetaText: {
+  savedAction: {
+    fontFamily: FONT_FAMILY.sans,
     fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textMuted,
+    fontWeight: FONT_WEIGHT.medium,
+    color: SIGNAL.mutedInk,
   },
-  cardMetaDot: {
-    fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textMuted,
-    marginHorizontal: 6,
+  savedActionAccent: { color: SIGNAL.accent, fontWeight: FONT_WEIGHT.semibold },
+
+  // Search
+  searchContainer: {
+    marginTop: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SIGNAL.ink,
   },
-  startButton: {
-    backgroundColor: APP_COLORS.primary,
-    borderRadius: LAYOUT.borderRadius,
-    height: LAYOUT.startButtonHeight,
+  searchInput: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.bodyLarge,
+    color: SIGNAL.ink,
+    paddingVertical: SPACING.sm,
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
+  },
+
+  // List row
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md + 2,
+    paddingHorizontal: SPACING.xl,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: SIGNAL.divider,
+    gap: SPACING.md,
+    backgroundColor: SIGNAL.paper,
+  },
+  rowPressed: { backgroundColor: '#F2EFE8' },
+  rowIndex: {
+    width: 24,
+    fontFamily: FONT_FAMILY.mono,
+    fontSize: FONT_SIZE.eyebrow,
+    color: SIGNAL.mutedInk,
+  },
+  rowColorBar: {
+    width: 28,
+    alignSelf: 'stretch',
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: SPACING.md,
   },
-  startButtonPressed: {
-    opacity: 0.8,
+  rowMain: { flex: 1, minWidth: 0 },
+  rowEyebrow: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: 1.5,
+    color: SIGNAL.mutedInk,
+    textTransform: 'uppercase',
+    fontWeight: FONT_WEIGHT.medium,
+    marginBottom: 2,
   },
-  startButtonText: {
-    color: '#FFFFFF',
+  rowName: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.headingSmall,
+    fontWeight: FONT_WEIGHT.medium,
+    color: SIGNAL.ink,
+    letterSpacing: -0.3,
+  },
+  rowDuration: {
+    fontFamily: FONT_FAMILY.seven,
     fontSize: FONT_SIZE.bodyLarge,
-    fontWeight: FONT_WEIGHT.semibold,
+    color: SIGNAL.ink,
+    letterSpacing: 0.5,
   },
 
-  // Empty state
+  // Empty
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -655,37 +668,55 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xxl,
   },
   emptyIcon: {
-    fontSize: 56,
-    color: APP_COLORS.divider,
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: 72,
+    color: SIGNAL.divider,
     marginBottom: SPACING.lg,
-    fontWeight: FONT_WEIGHT.bold,
+    fontWeight: FONT_WEIGHT.semibold,
+    lineHeight: 72,
   },
   emptyTitle: {
-    fontSize: FONT_SIZE.headingMedium,
-    fontWeight: FONT_WEIGHT.bold,
-    color: APP_COLORS.textPrimary,
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.displayMedium,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: SIGNAL.ink,
     textAlign: 'center',
+    letterSpacing: -0.8,
   },
   emptySubtitle: {
+    fontFamily: FONT_FAMILY.sans,
     fontSize: FONT_SIZE.body,
-    color: APP_COLORS.textMuted,
+    color: SIGNAL.mutedInk,
     textAlign: 'center',
     marginTop: SPACING.sm,
     lineHeight: FONT_SIZE.body * 1.5,
+    maxWidth: 280,
   },
   emptyCta: {
     marginTop: SPACING.xl,
-    paddingHorizontal: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderWidth: 1.5,
+    borderColor: SIGNAL.ink,
+  },
+  emptyCtaPressed: { backgroundColor: SIGNAL.ink },
+  emptyCtaText: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.caption,
+    fontWeight: FONT_WEIGHT.bold,
+    color: SIGNAL.ink,
+    letterSpacing: 1.5,
   },
 
-  // No results (search returned nothing)
+  // No results
   noResultsContainer: {
     paddingVertical: SPACING.xxxl,
     alignItems: 'center',
   },
   noResultsText: {
+    fontFamily: FONT_FAMILY.sans,
     fontSize: FONT_SIZE.body,
-    color: APP_COLORS.textMuted,
+    color: SIGNAL.mutedInk,
     textAlign: 'center',
   },
 });

@@ -1,9 +1,9 @@
 /**
- * History Tab for Schlag (v2).
+ * History Tab — Signal direction.
  *
- * Displays an analytics dashboard (streak, weekly stats, work:rest ratio,
- * most-used sequence) and a chronological list of workout sessions grouped
- * by date. Sessions can be soft-deleted via long-press.
+ * Editorial dashboard (streak eyebrow + four-up meta grid) above an indexed
+ * session list grouped by Today / Yesterday / This Week / Earlier. Flat rows,
+ * tracked eyebrows, DSEG7 durations — matches Library/Builder language.
  */
 
 import React, { useCallback, useEffect, useMemo } from 'react';
@@ -16,33 +16,35 @@ import {
   Text,
   View,
   type ListRenderItemInfo,
+  type ViewStyle,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 
 import { useSessionStore } from '@/stores/sessionStore';
-import { APP_COLORS } from '@/constants/colors';
-import { FONT_SIZE, FONT_WEIGHT } from '@/constants/typography';
-import { LAYOUT, SPACING } from '@/constants/layout';
+import { SIGNAL } from '@/constants/colors';
+import {
+  FONT_FAMILY,
+  FONT_SIZE,
+  FONT_WEIGHT,
+  LETTER_SPACING,
+} from '@/constants/typography';
+import { SPACING } from '@/constants/layout';
 import type { WorkoutSession } from '@/types';
 
 // ---------------------------------------------------------------------------
-// Formatting helpers
+// Helpers
 // ---------------------------------------------------------------------------
 
-/** Format seconds into MM:SS or H:MM:SS. */
 function formatDuration(totalSeconds: number): string {
   if (totalSeconds <= 0) return '00:00';
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = Math.floor(totalSeconds % 60);
-
   if (hours > 0) {
     return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   }
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
-/** Format an ISO date string to a short time like "2:34 PM". */
 function formatTime(iso: string): string {
   const d = new Date(iso);
   const hours = d.getHours();
@@ -52,7 +54,6 @@ function formatTime(iso: string): string {
   return `${displayHours}:${String(minutes).padStart(2, '0')} ${ampm}`;
 }
 
-/** Format an ISO date string to a short date like "Mar 7". */
 function formatShortDate(iso: string): string {
   const d = new Date(iso);
   const months = [
@@ -62,7 +63,6 @@ function formatShortDate(iso: string): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-/** Categorize a YYYY-MM-DD date key into a display group. */
 function getDateGroup(dateKey: string): string {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -72,7 +72,6 @@ function getDateGroup(dateKey: string): string {
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayKey = yesterday.toISOString().substring(0, 10);
 
-  // Start of week (Monday).
   const weekStart = new Date(today);
   const day = weekStart.getDay();
   const diff = day === 0 ? 6 : day - 1;
@@ -86,7 +85,7 @@ function getDateGroup(dateKey: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Section list data builder
+// Section data
 // ---------------------------------------------------------------------------
 
 interface SectionItem {
@@ -94,14 +93,13 @@ interface SectionItem {
   key: string;
   title?: string;
   session?: WorkoutSession;
+  indexInGroup?: number;
 }
 
 function buildSectionData(
   grouped: Map<string, WorkoutSession[]>,
 ): SectionItem[] {
   const items: SectionItem[] = [];
-
-  // Group date keys by display group.
   const groups = new Map<string, { dateKey: string; sessions: WorkoutSession[] }[]>();
 
   for (const [dateKey, sessions] of grouped) {
@@ -114,7 +112,6 @@ function buildSectionData(
     }
   }
 
-  // Render in order: Today, Yesterday, This Week, Earlier.
   const groupOrder = ['Today', 'Yesterday', 'This Week', 'Earlier'];
 
   for (const groupName of groupOrder) {
@@ -123,12 +120,17 @@ function buildSectionData(
 
     items.push({ type: 'header', key: `header-${groupName}`, title: groupName });
 
-    // Sort date entries within the group (most recent first).
     dateEntries.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
 
+    let idx = 0;
     for (const { sessions } of dateEntries) {
       for (const session of sessions) {
-        items.push({ type: 'session', key: session.id, session });
+        items.push({
+          type: 'session',
+          key: session.id,
+          session,
+          indexInGroup: idx++,
+        });
       }
     }
   }
@@ -137,7 +139,7 @@ function buildSectionData(
 }
 
 // ---------------------------------------------------------------------------
-// Analytics Dashboard
+// Dashboard — four-up Signal meta grid
 // ---------------------------------------------------------------------------
 
 interface DashboardProps {
@@ -153,191 +155,158 @@ function AnalyticsDashboard({
   workRestRatio,
   mostUsed,
 }: DashboardProps) {
+  const ratioText =
+    workRestRatio === Infinity
+      ? 'ALL WORK'
+      : workRestRatio === 0
+        ? '—'
+        : `${workRestRatio}:1`;
+
   return (
-    <View style={styles.dashboard}>
-      <View style={styles.dashboardRow}>
-        {/* Streak */}
-        <View style={[styles.statCard, styles.statCardWide]}>
-          <Text style={styles.statEmoji}>{'\uD83D\uDD25'}</Text>
-          <Text style={styles.statValue}>
-            {streak > 0 ? `${streak}-day streak` : 'No streak'}
-          </Text>
-        </View>
+    <View>
+      {/* Streak — eyebrow row */}
+      <View style={styles.streakRow}>
+        <Text style={styles.streakLabel}>
+          {streak > 0 ? `${streak}-day streak` : 'No current streak'}
+        </Text>
       </View>
 
-      <View style={styles.dashboardRow}>
-        {/* Sessions this week */}
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>This Week</Text>
-          <Text style={styles.statValue}>{weekSummary.sessions}</Text>
-          <Text style={styles.statUnit}>
-            {weekSummary.sessions === 1 ? 'session' : 'sessions'}
-          </Text>
+      {/* Four-up meta grid */}
+      <View style={styles.metaGrid}>
+        <View style={[styles.metaCell, styles.metaCellBorder]}>
+          <Text style={styles.metaLabel}>Sessions</Text>
+          <Text style={styles.metaValue}>{weekSummary.sessions}</Text>
+          <Text style={styles.metaUnit}>this week</Text>
         </View>
-
-        {/* Active time */}
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Active</Text>
-          <Text style={styles.statValue}>
+        <View style={[styles.metaCell, styles.metaCellBorder]}>
+          <Text style={styles.metaLabel}>Work</Text>
+          <Text style={styles.metaValue}>
             {formatDuration(weekSummary.activeSeconds)}
           </Text>
-          <Text style={styles.statUnit}>work time</Text>
+          <Text style={styles.metaUnit}>active time</Text>
         </View>
-
-        {/* Rest time */}
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Rest</Text>
-          <Text style={styles.statValue}>
+        <View style={[styles.metaCell, styles.metaCellBorder]}>
+          <Text style={styles.metaLabel}>Rest</Text>
+          <Text style={styles.metaValue}>
             {formatDuration(weekSummary.restSeconds)}
           </Text>
-          <Text style={styles.statUnit}>rest time</Text>
+          <Text style={styles.metaUnit}>rest time</Text>
+        </View>
+        <View style={styles.metaCell}>
+          <Text style={styles.metaLabel}>Work:Rest</Text>
+          <Text style={styles.metaValue}>{ratioText}</Text>
+          <Text style={styles.metaUnit}>this week</Text>
         </View>
       </View>
 
-      <View style={styles.dashboardRow}>
-        {/* Work:Rest ratio */}
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Work:Rest</Text>
-          <Text style={styles.statValue}>
-            {workRestRatio === Infinity
-              ? 'All work'
-              : workRestRatio === 0
-                ? '--'
-                : `${workRestRatio}:1`}
-          </Text>
-          <Text style={styles.statUnit}>this week</Text>
-        </View>
-
-        {/* Most used sequence */}
-        <View style={[styles.statCard, styles.statCardFlex2]}>
-          <Text style={styles.statLabel}>Most Used</Text>
-          <Text style={styles.statValue} numberOfLines={1}>
-            {mostUsed ? mostUsed.name : '--'}
-          </Text>
-          <Text style={styles.statUnit}>
-            {mostUsed ? `${mostUsed.count}x this month` : 'this month'}
-          </Text>
-        </View>
+      {/* Most-used row */}
+      <View style={styles.mostUsedRow}>
+        <Text style={styles.eyebrow}>Most used</Text>
+        <Text style={styles.mostUsedValue} numberOfLines={1}>
+          {mostUsed ? mostUsed.name : '—'}
+        </Text>
+        <Text style={styles.mostUsedMeta}>
+          {mostUsed ? `×${mostUsed.count} this month` : ''}
+        </Text>
       </View>
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Session Card
+// Session Row — indexed list row
 // ---------------------------------------------------------------------------
 
-interface SessionCardProps {
+interface SessionRowProps {
   session: WorkoutSession;
+  index: number;
   onLongPress: (session: WorkoutSession) => void;
 }
 
-const SessionCard = React.memo<SessionCardProps>(
-  ({ session, onLongPress }) => {
-    const totalSeconds = session.total_active_seconds + session.total_rest_seconds;
-    const isCompleted = session.status === 'completed';
+const SessionRow = React.memo<SessionRowProps>(({ session, index, onLongPress }) => {
+  const totalSeconds =
+    session.total_active_seconds + session.total_rest_seconds;
+  const isCompleted = session.status === 'completed';
+  const name = session.sequence_snapshot?.name ?? '(deleted sequence)';
 
-    const handleLongPress = useCallback(() => {
-      onLongPress(session);
-    }, [onLongPress, session]);
+  const handleLongPress = useCallback(() => onLongPress(session), [
+    onLongPress,
+    session,
+  ]);
 
-    return (
-      <Pressable
-        onLongPress={handleLongPress}
-        accessibilityRole="button"
-        accessibilityLabel={`${session.sequence_snapshot.name}. ${formatDuration(totalSeconds)}. ${isCompleted ? 'Completed' : 'Stopped early'}. Long press to delete.`}
-        style={({ pressed }) => [
-          styles.sessionCard,
-          pressed && styles.sessionCardPressed,
-          Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+  return (
+    <Pressable
+      onLongPress={handleLongPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${name}. ${formatDuration(totalSeconds)}. ${isCompleted ? 'Completed' : 'Stopped early'}. Long press to delete.`}
+      style={({ pressed }) => [
+        styles.row,
+        pressed && styles.rowPressed,
+        Platform.OS === 'web' && ({ cursor: 'pointer' } as ViewStyle),
+      ]}
+    >
+      <Text style={styles.rowIndex}>{String(index + 1).padStart(2, '0')}</Text>
+      <View
+        style={[
+          styles.rowAccent,
+          { backgroundColor: isCompleted ? SIGNAL.accent : SIGNAL.mutedInk },
+        ]}
+      />
+
+      <View style={styles.rowMain}>
+        <Text style={styles.rowName} numberOfLines={1}>
+          {name}
+        </Text>
+        <View style={styles.rowMetaRow}>
+          <Text style={styles.rowMeta}>
+            {formatTime(session.started_at)}
+          </Text>
+          {session.rounds_completed > 0 && (
+            <>
+              <Text style={styles.rowMetaDot}>·</Text>
+              <Text style={styles.rowMeta}>
+                {session.rounds_completed}{' '}
+                {session.rounds_completed === 1 ? 'round' : 'rounds'}
+              </Text>
+            </>
+          )}
+        </View>
+      </View>
+
+      <Text
+        style={[
+          styles.rowStatus,
+          isCompleted ? styles.rowStatusDone : styles.rowStatusStopped,
         ]}
       >
-        {/* Left accent bar */}
-        <View
-          style={[
-            styles.sessionAccent,
-            {
-              backgroundColor: isCompleted
-                ? APP_COLORS.primary
-                : APP_COLORS.textMuted,
-            },
-          ]}
-        />
-
-        {/* Content */}
-        <View style={styles.sessionContent}>
-          <View style={styles.sessionHeader}>
-            <Text style={styles.sessionName} numberOfLines={1}>
-              {session.sequence_snapshot.name}
-            </Text>
-            <View
-              style={[
-                styles.statusBadge,
-                isCompleted ? styles.statusCompleted : styles.statusStopped,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusText,
-                  isCompleted
-                    ? styles.statusTextCompleted
-                    : styles.statusTextStopped,
-                ]}
-              >
-                {isCompleted ? 'Completed' : 'Stopped'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.sessionMeta}>
-            <Text style={styles.sessionMetaText}>
-              {formatShortDate(session.started_at)} at{' '}
-              {formatTime(session.started_at)}
-            </Text>
-            <Text style={styles.sessionMetaDot}>{'\u00B7'}</Text>
-            <Text style={styles.sessionMetaText}>
-              {formatDuration(totalSeconds)}
-            </Text>
-            {session.rounds_completed > 0 && (
-              <>
-                <Text style={styles.sessionMetaDot}>{'\u00B7'}</Text>
-                <Text style={styles.sessionMetaText}>
-                  {session.rounds_completed}{' '}
-                  {session.rounds_completed === 1 ? 'round' : 'rounds'}
-                </Text>
-              </>
-            )}
-          </View>
-        </View>
-      </Pressable>
-    );
-  },
-);
+        {isCompleted ? 'DONE' : 'STOP'}
+      </Text>
+      <Text style={styles.rowDuration}>{formatDuration(totalSeconds)}</Text>
+    </Pressable>
+  );
+});
 
 // ---------------------------------------------------------------------------
-// Empty State
+// Empty state
 // ---------------------------------------------------------------------------
 
 function EmptyState() {
   return (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>{'\uD83D\uDCCA'}</Text>
-      <Text style={styles.emptyTitle}>No workout history yet</Text>
+      <Text style={styles.emptyIcon}>∅</Text>
+      <Text style={styles.emptyTitle}>No sessions yet</Text>
       <Text style={styles.emptySubtitle}>
-        Complete a workout to see it here.
+        Finish a workout and it'll log here.
       </Text>
     </View>
   );
 }
 
 // ---------------------------------------------------------------------------
-// History Screen
+// Screen
 // ---------------------------------------------------------------------------
 
 export default function HistoryScreen() {
-  const router = useRouter();
-
-  // Store access
   const loadSessions = useSessionStore((s) => s.loadFromStorage);
   const isLoaded = useSessionStore((s) => s.isLoaded);
   const sessions = useSessionStore((s) => s.sessions);
@@ -351,17 +320,13 @@ export default function HistoryScreen() {
   const getMostUsedSequence = useSessionStore((s) => s.getMostUsedSequence);
   const deleteSession = useSessionStore((s) => s.deleteSession);
 
-  // Hydrate on mount
   useEffect(() => {
-    if (!isLoaded) {
-      loadSessions();
-    }
+    if (!isLoaded) loadSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Derived analytics (recompute when sessions change)
   const activeSessions = useMemo(() => {
-    void sessions; // depend on sessions for reactivity
+    void sessions;
     return getActiveSessions();
   }, [sessions, getActiveSessions]);
 
@@ -391,22 +356,17 @@ export default function HistoryScreen() {
     return buildSectionData(grouped);
   }, [sessions, getSessionsGroupedByDate]);
 
-  // Callbacks
   const handleLongPress = useCallback(
     (session: WorkoutSession) => {
+      const name = session.sequence_snapshot?.name ?? 'this session';
       if (Platform.OS === 'web') {
-        const confirmed = confirm(
-          `Delete "${session.sequence_snapshot.name}" session?`,
-        );
-        if (confirmed) {
-          deleteSession(session.id);
-        }
+        const confirmed = confirm(`Delete "${name}" session?`);
+        if (confirmed) deleteSession(session.id);
         return;
       }
-
       Alert.alert(
         'Delete Session',
-        `Delete "${session.sequence_snapshot.name}" session from ${formatShortDate(session.started_at)}?`,
+        `Delete "${name}" session from ${formatShortDate(session.started_at)}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -420,7 +380,6 @@ export default function HistoryScreen() {
     [deleteSession],
   );
 
-  // Render
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<SectionItem>) => {
       if (item.type === 'header') {
@@ -433,10 +392,13 @@ export default function HistoryScreen() {
 
       if (item.session) {
         return (
-          <SessionCard session={item.session} onLongPress={handleLongPress} />
+          <SessionRow
+            session={item.session}
+            index={item.indexInGroup ?? 0}
+            onLongPress={handleLongPress}
+          />
         );
       }
-
       return null;
     },
     [handleLongPress],
@@ -447,36 +409,42 @@ export default function HistoryScreen() {
   if (!isLoaded) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading...</Text>
-      </View>
-    );
-  }
-
-  if (activeSessions.length === 0) {
-    return (
-      <View style={styles.container}>
-        <EmptyState />
+        <Text style={styles.loadingText}>Loading…</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={sectionData}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        ListHeaderComponent={
-          <AnalyticsDashboard
-            streak={streak}
-            weekSummary={weekSummary}
-            workRestRatio={workRestRatio}
-            mostUsed={mostUsed}
-          />
-        }
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-      />
+      {/* Editorial header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>History</Text>
+        <Text style={styles.headerSubtitle}>
+          {activeSessions.length === 0
+            ? 'No sessions logged yet.'
+            : `${activeSessions.length} ${activeSessions.length === 1 ? 'session' : 'sessions'} logged.`}
+        </Text>
+      </View>
+
+      {activeSessions.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <FlatList
+          data={sectionData}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          ListHeaderComponent={
+            <AnalyticsDashboard
+              streak={streak}
+              weekSummary={weekSummary}
+              workRestRatio={workRestRatio}
+              mostUsed={mostUsed}
+            />
+          }
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </View>
   );
 }
@@ -486,172 +454,206 @@ export default function HistoryScreen() {
 // ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: APP_COLORS.backgroundLight,
-  },
+  container: { flex: 1, backgroundColor: SIGNAL.paper },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: APP_COLORS.backgroundLight,
+    backgroundColor: SIGNAL.paper,
   },
   loadingText: {
-    fontSize: FONT_SIZE.bodyLarge,
-    color: APP_COLORS.textMuted,
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.body,
+    color: SIGNAL.mutedInk,
   },
-  listContent: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xxxl,
+  listContent: { paddingBottom: 40 },
+
+  // Editorial header
+  header: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SIGNAL.divider,
+  },
+  headerTitle: {
+    fontFamily: FONT_FAMILY.display,
+    fontSize: FONT_SIZE.displayHero,
+    fontWeight: FONT_WEIGHT.semibold,
+    color: SIGNAL.ink,
+    letterSpacing: -1.5,
+    lineHeight: FONT_SIZE.displayHero * 1.0,
+  },
+  headerSubtitle: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.bodySmall,
+    color: SIGNAL.mutedInk,
+    marginTop: SPACING.xs,
   },
 
-  // ---------------------------------------------------------------------------
-  // Dashboard
-  // ---------------------------------------------------------------------------
-  dashboard: {
+  // Streak
+  streakRow: {
+    paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
-    paddingBottom: SPACING.sm,
-    gap: SPACING.sm,
+    paddingBottom: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SIGNAL.divider,
   },
-  dashboardRow: {
+  streakLabel: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: LETTER_SPACING.eyebrow,
+    color: SIGNAL.accent,
+    textTransform: 'uppercase',
+    fontWeight: FONT_WEIGHT.semibold,
+  },
+
+  // Four-up meta grid
+  metaGrid: {
     flexDirection: 'row',
-    gap: SPACING.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SIGNAL.divider,
   },
-  statCard: {
+  metaCell: {
     flex: 1,
-    backgroundColor: APP_COLORS.surface,
-    borderRadius: LAYOUT.cardRadius,
-    padding: SPACING.md,
-    alignItems: 'center',
-    // Shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-    elevation: 1,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    minWidth: 0,
   },
-  statCardWide: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: SPACING.sm,
+  metaCellBorder: {
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: SIGNAL.divider,
   },
-  statCardFlex2: {
-    flex: 2,
-  },
-  statEmoji: {
-    fontSize: 20,
-  },
-  statLabel: {
-    fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textMuted,
+  metaLabel: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: LETTER_SPACING.caption,
+    color: SIGNAL.mutedInk,
+    textTransform: 'uppercase',
     fontWeight: FONT_WEIGHT.medium,
-    marginBottom: 2,
   },
-  statValue: {
-    fontSize: FONT_SIZE.bodyLarge,
-    color: APP_COLORS.textPrimary,
-    fontWeight: FONT_WEIGHT.bold,
+  metaValue: {
+    fontFamily: FONT_FAMILY.seven,
+    fontSize: FONT_SIZE.headingMedium,
+    color: SIGNAL.ink,
+    marginTop: 2,
+    letterSpacing: 0.5,
   },
-  statUnit: {
-    fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textMuted,
-    marginTop: 1,
+  metaUnit: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    color: SIGNAL.mutedInk,
+    marginTop: 2,
   },
 
-  // ---------------------------------------------------------------------------
+  // Most used
+  mostUsedRow: {
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: SIGNAL.divider,
+  },
+  eyebrow: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: LETTER_SPACING.eyebrow,
+    color: SIGNAL.mutedInk,
+    textTransform: 'uppercase',
+    fontWeight: FONT_WEIGHT.medium,
+    marginBottom: 4,
+  },
+  mostUsedValue: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.headingSmall,
+    fontWeight: FONT_WEIGHT.medium,
+    color: SIGNAL.ink,
+    letterSpacing: -0.3,
+  },
+  mostUsedMeta: {
+    fontFamily: FONT_FAMILY.mono,
+    fontSize: FONT_SIZE.eyebrow + 1,
+    color: SIGNAL.mutedInk,
+    marginTop: 2,
+  },
+
   // Section headers
-  // ---------------------------------------------------------------------------
   sectionHeader: {
-    paddingTop: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xl,
     paddingBottom: SPACING.sm,
   },
   sectionHeaderText: {
-    fontSize: FONT_SIZE.caption,
-    fontWeight: FONT_WEIGHT.semibold,
-    color: APP_COLORS.textMuted,
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: LETTER_SPACING.eyebrow,
+    color: SIGNAL.mutedInk,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // ---------------------------------------------------------------------------
-  // Session card
-  // ---------------------------------------------------------------------------
-  sessionCard: {
-    flexDirection: 'row',
-    backgroundColor: APP_COLORS.surface,
-    borderRadius: LAYOUT.cardRadius,
-    marginTop: SPACING.sm,
-    overflow: 'hidden',
-    // Shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  sessionCardPressed: {
-    opacity: 0.85,
-  },
-  sessionAccent: {
-    width: 4,
-  },
-  sessionContent: {
-    flex: 1,
-    padding: SPACING.lg,
-  },
-  sessionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  sessionName: {
-    flex: 1,
-    fontSize: FONT_SIZE.bodyLarge,
-    fontWeight: FONT_WEIGHT.semibold,
-    color: APP_COLORS.textPrimary,
-    marginRight: SPACING.sm,
-  },
-  statusBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: LAYOUT.borderRadius,
-  },
-  statusCompleted: {
-    backgroundColor: '#DCFCE7',
-  },
-  statusStopped: {
-    backgroundColor: '#FEF3C7',
-  },
-  statusText: {
-    fontSize: FONT_SIZE.caption,
     fontWeight: FONT_WEIGHT.medium,
   },
-  statusTextCompleted: {
-    color: '#166534',
-  },
-  statusTextStopped: {
-    color: '#92400E',
-  },
-  sessionMeta: {
+
+  // Session row
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: SPACING.xs,
-    flexWrap: 'wrap',
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md - 2,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: SIGNAL.divider,
+    gap: SPACING.md,
+    backgroundColor: SIGNAL.paper,
   },
-  sessionMetaText: {
-    fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textMuted,
+  rowPressed: { backgroundColor: '#F2EFE8' },
+  rowIndex: {
+    width: 24,
+    fontFamily: FONT_FAMILY.mono,
+    fontSize: FONT_SIZE.eyebrow + 1,
+    color: SIGNAL.mutedInk,
   },
-  sessionMetaDot: {
-    fontSize: FONT_SIZE.caption,
-    color: APP_COLORS.textMuted,
-    marginHorizontal: 6,
+  rowAccent: { width: 4, alignSelf: 'stretch', minHeight: 32 },
+  rowMain: { flex: 1, minWidth: 0 },
+  rowName: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.body + 1,
+    fontWeight: FONT_WEIGHT.medium,
+    color: SIGNAL.ink,
+    letterSpacing: -0.1,
+  },
+  rowMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  rowMeta: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow + 1,
+    color: SIGNAL.mutedInk,
+    letterSpacing: 0.2,
+  },
+  rowMetaDot: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow + 1,
+    color: SIGNAL.mutedInk,
+    marginHorizontal: 2,
+  },
+  rowStatus: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    letterSpacing: LETTER_SPACING.eyebrow,
+    fontWeight: FONT_WEIGHT.semibold,
+  },
+  rowStatusDone: { color: SIGNAL.mutedInk },
+  rowStatusStopped: { color: SIGNAL.accent, opacity: 0.8 },
+  rowDuration: {
+    fontFamily: FONT_FAMILY.seven,
+    fontSize: FONT_SIZE.body + 1,
+    color: SIGNAL.ink,
+    letterSpacing: 0.5,
+    minWidth: 56,
+    textAlign: 'right',
   },
 
-  // ---------------------------------------------------------------------------
-  // Empty state
-  // ---------------------------------------------------------------------------
+  // Empty
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -659,20 +661,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xxl,
   },
   emptyIcon: {
-    fontSize: 48,
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: 72,
+    color: SIGNAL.divider,
     marginBottom: SPACING.lg,
+    fontWeight: FONT_WEIGHT.regular,
+    lineHeight: 72,
   },
   emptyTitle: {
-    fontSize: FONT_SIZE.headingSmall,
+    fontFamily: FONT_FAMILY.display,
+    fontSize: FONT_SIZE.displayMedium,
     fontWeight: FONT_WEIGHT.semibold,
-    color: APP_COLORS.textSecondary,
+    color: SIGNAL.ink,
     textAlign: 'center',
+    letterSpacing: -0.8,
   },
   emptySubtitle: {
+    fontFamily: FONT_FAMILY.sans,
     fontSize: FONT_SIZE.body,
-    color: APP_COLORS.textMuted,
+    color: SIGNAL.mutedInk,
     textAlign: 'center',
     marginTop: SPACING.sm,
     lineHeight: FONT_SIZE.body * 1.5,
+    maxWidth: 280,
   },
 });
