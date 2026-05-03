@@ -10,6 +10,7 @@
  */
 
 import * as Speech from 'expo-speech';
+import { Platform } from 'react-native';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -27,6 +28,36 @@ const SPEECH_OPTIONS: Speech.SpeechOptions = {
 // ---------------------------------------------------------------------------
 
 export class SpeechEngine {
+  /**
+   * Pre-warm the TTS engine to eliminate first-utterance latency.
+   *
+   * Fires a silent ` ` (single space) utterance at zero volume so the engine
+   * loads the voice into memory without producing audible output. This cuts
+   * 50–300ms off the very first countdown beep of a workout.
+   *
+   * Web is skipped: SpeechSynthesis typically requires a user gesture before
+   * the first speak() will run, so a cold-start prewarm would silently no-op
+   * and waste a call. Web prewarm strategy is tracked as a follow-up.
+   *
+   * Errors are swallowed — audio failures must never crash the app.
+   *
+   * @param voice  Optional expo-speech voice identifier. Null/undefined uses
+   *               the system default voice for the language.
+   */
+  static prewarm(voice?: string | null): void {
+    if (Platform.OS === 'web') return;
+
+    try {
+      Speech.speak(' ', {
+        volume: 0,
+        language: 'en-US',
+        voice: voice ?? undefined,
+      });
+    } catch (error) {
+      console.warn('[SpeechEngine] prewarm error:', error);
+    }
+  }
+
   /**
    * Speak a countdown number ("3", "2", "1").
    * The speech is brief and punchy at natural speed.
