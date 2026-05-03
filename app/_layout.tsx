@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { Alert, Platform, StyleSheet } from 'react-native';
 
 import { getTimerSession, clearTimerSession, getSequences, requestPersistentStorage, setStorageErrorHandler } from '@/lib/storage';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -39,6 +40,15 @@ export default function RootLayout() {
         Alert.alert('Storage Error', text);
       }
     });
+  }, []);
+
+  // Hydrate global settings on cold start so prewarm and other launch-time
+  // logic can read them. Idempotent — per-tab loadFromStorage calls remain
+  // for safety but become no-ops after this runs.
+  useEffect(() => {
+    if (!useSettingsStore.getState().isLoaded) {
+      useSettingsStore.getState().loadFromStorage();
+    }
   }, []);
 
   // Check for a saved timer session on cold start and auto-navigate.
