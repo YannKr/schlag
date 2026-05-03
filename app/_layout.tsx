@@ -8,6 +8,7 @@ import { Alert, Platform, StyleSheet } from 'react-native';
 
 import { getTimerSession, clearTimerSession, getSequences, requestPersistentStorage, setStorageErrorHandler } from '@/lib/storage';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { SpeechEngine } from '@/lib/audio/speechEngine';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -21,6 +22,9 @@ export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     'JetBrainsMono-Bold': require('../assets/fonts/JetBrainsMono-Bold.ttf'),
   });
+
+  const settingsLoaded = useSettingsStore((s) => s.isLoaded);
+  const selectedVoiceId = useSettingsStore((s) => s.settings.selectedVoiceId);
 
   useEffect(() => {
     if (fontsLoaded) {
@@ -50,6 +54,14 @@ export default function RootLayout() {
       useSettingsStore.getState().loadFromStorage();
     }
   }, []);
+
+  // Pre-warm the TTS engine after settings hydrate, and re-prewarm whenever
+  // the user picks a different voice. Cuts 50–300ms off the first countdown
+  // beep of a workout. See docs/i18n-l10n-a11y-research.md §3.3.
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    SpeechEngine.prewarm(selectedVoiceId);
+  }, [settingsLoaded, selectedVoiceId]);
 
   // Check for a saved timer session on cold start and auto-navigate.
   useEffect(() => {
