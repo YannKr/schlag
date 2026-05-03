@@ -1,0 +1,14 @@
+[
+  {
+    "title": "Voice picker UI in Settings",
+    "description": "Add a voice picker in app/(tabs)/settings.tsx that lists Speech.getAvailableVoicesAsync() results and writes the chosen identifier to settings.selectedVoiceId via updateSetting('selectedVoiceId', id). Once present, also wire the selected voice into the existing SpeechEngine.speak* methods (currently hardcoded language: 'en-US' with no voice). This is the consumer for the selectedVoiceId field added in 2026-05-02-tts-prewarm."
+  },
+  {
+    "title": "Unit tests for AudioEngine instance methods",
+    "description": "lib/audio/audioEngine.ts has zero coverage. Add unit tests for initialize(), unlockWebAudio(), playIntervalStart(), playCountdown(voiceEnabled true/false), playIntervalEnd(customUri), playWorkoutComplete(), playPauseClick(), playHalfway(), speakNextInterval(), and stopSpeech(). Mock ToneGenerator and SpeechEngine. Useful to lock the contract before adding more audio behaviors."
+  },
+  {
+    "title": "Web TTS user-gesture prewarm strategy",
+    "description": "Web SpeechSynthesis typically requires a user gesture before the first speak() will run, so the cold-start prewarm in app/_layout.tsx no-ops on web today. Decide whether to (a) defer prewarm to the first user tap (e.g., wired into AudioEngine.unlockWebAudio()), or (b) accept that web has slightly higher first-utterance latency than native. Either path involves user-research / measurement; tracked separately."
+  }
+]
