@@ -32,6 +32,10 @@ jest.mock('@/lib/storage', () => {
       defaultAnnounceNames: false,
       getReadySeconds: 3,
       reduceMotion: false,
+      cameraEnabled: false,
+      cameraPosition: 'front' as const,
+      showCameraPreview: true,
+      selectedVoiceId: null,
     }),
     saveSettings: jest.fn((s: any) => { settings = s; }),
     getTimerSession: jest.fn(() => timerSession),
@@ -177,6 +181,7 @@ const INITIAL_SETTINGS_STATE = {
     cameraEnabled: false,
     cameraPosition: 'front' as const,
     showCameraPreview: true,
+    selectedVoiceId: null,
   },
   isLoaded: false,
 };
