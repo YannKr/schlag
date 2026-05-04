@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1.0] - 2026-05-03
+
+### Added
+- **Pick your own TTS voice.** Settings → Voice opens a list of every English voice on your device, sorted with Enhanced quality first. Tapping a voice previews "3, 2, 1" so you hear the change before saving. The chosen voice is used for countdown numbers and "Next: …" callouts.
+- Cold-start TTS prewarm on native (iOS/Android) at app launch, and a re-prewarm whenever the selected voice changes. Trims 50–300 ms off the first countdown utterance of a workout.
+- 27 new unit tests covering AudioEngine — platform routing, init idempotency, web AudioContext unlock, every fire-and-forget tone, voice toggles, and cleanup.
+
+### Changed
+- **Web countdowns now warm up faster.** The first time you tap "Start Workout" on the web, the TTS engine prewarms on that same gesture (which is the only moment a browser will let it run). Previously web silently no-oped the cold-start prewarm and you ate the full load-time hit on the first countdown.
+
 ## [0.2.0.0] - 2026-04-20
 
 ### Changed
