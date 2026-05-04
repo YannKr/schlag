@@ -13,29 +13,21 @@ jest.mock('expo-speech', () => ({
   stop: jest.fn(),
 }));
 
-// react-native Platform is mocked per-test below by overriding the OS field.
-jest.mock('react-native', () => ({
-  Platform: { OS: 'ios' },
-}));
-
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
 import * as Speech from 'expo-speech';
-import { Platform } from 'react-native';
 import { SpeechEngine } from '@/lib/audio/speechEngine';
 
 const speakMock = Speech.speak as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  // Reset platform to ios for each test; web tests override.
-  (Platform as { OS: string }).OS = 'ios';
 });
 
 describe('SpeechEngine.prewarm', () => {
-  it('calls Speech.speak with a single space at zero volume on native', () => {
+  it('calls Speech.speak with a single space at zero volume', () => {
     SpeechEngine.prewarm();
 
     expect(speakMock).toHaveBeenCalledTimes(1);
@@ -62,22 +54,64 @@ describe('SpeechEngine.prewarm', () => {
     expect(options.voice).toBeUndefined();
   });
 
-  // The web no-op behavior (`Platform.OS === 'web'` early-return) cannot be
-  // unit-tested: babel-preset-expo statically inlines `Platform.OS` reads to
-  // a string literal at the bundler's `caller.platform` — 'ios' in jest-expo.
-  // The mutation `(Platform as { OS: string }).OS = 'web'` lands on the
-  // underlying object but is never read at runtime. Verified in a smoke test.
-  it.skip('no-ops on web (returns without calling Speech.speak)', () => {
-    (Platform as { OS: string }).OS = 'web';
-    SpeechEngine.prewarm();
-    expect(speakMock).not.toHaveBeenCalled();
-  });
-
   it('swallows errors thrown by Speech.speak', () => {
     speakMock.mockImplementationOnce(() => {
       throw new Error('boom');
     });
 
     expect(() => SpeechEngine.prewarm()).not.toThrow();
+  });
+});
+
+describe('SpeechEngine instance voice resolution', () => {
+  const stopMock = Speech.stop as jest.Mock;
+
+  it('reads the voice via the resolver on every utterance', () => {
+    let voice: string | null = 'voice-A';
+    const engine = new SpeechEngine(() => voice);
+
+    engine.speakCountdown(3);
+    expect(speakMock).toHaveBeenLastCalledWith('3', expect.objectContaining({
+      voice: 'voice-A',
+    }));
+
+    voice = 'voice-B';
+    engine.speakNextInterval('Squat');
+    expect(speakMock).toHaveBeenLastCalledWith('Next: Squat', expect.objectContaining({
+      voice: 'voice-B',
+    }));
+
+    voice = null;
+    engine.speakHalfway();
+    expect(speakMock).toHaveBeenLastCalledWith('Halfway', expect.objectContaining({
+      voice: undefined,
+    }));
+  });
+
+  it('defaults to no voice when no resolver is provided', () => {
+    const engine = new SpeechEngine();
+    engine.speakCountdown(2);
+    const [, options] = speakMock.mock.calls.at(-1)!;
+    expect(options.voice).toBeUndefined();
+  });
+
+  it('stops any in-progress speech before speaking', () => {
+    const engine = new SpeechEngine(() => null);
+    engine.speakCountdown(1);
+    expect(stopMock).toHaveBeenCalled();
+  });
+
+  it('skips empty next-interval announcements', () => {
+    const engine = new SpeechEngine(() => 'voice-X');
+    engine.speakNextInterval('   ');
+    expect(speakMock).not.toHaveBeenCalled();
+  });
+
+  it('speakPreview uses the active voice', () => {
+    const engine = new SpeechEngine(() => 'voice-preview');
+    engine.speakPreview('hello');
+    expect(speakMock).toHaveBeenLastCalledWith('hello', expect.objectContaining({
+      voice: 'voice-preview',
+    }));
   });
 });
