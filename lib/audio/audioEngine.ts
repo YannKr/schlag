@@ -15,6 +15,7 @@
 
 import { Platform } from 'react-native';
 import type { ToneName } from '@/types';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { ToneGenerator } from './toneGenerator';
 import { ToneGeneratorWeb } from './toneGenerator.web';
 import { SpeechEngine } from './speechEngine';
@@ -46,7 +47,13 @@ export class AudioEngine {
       this.toneGenerator = new ToneGenerator();
     }
 
-    this.speechEngine = new SpeechEngine();
+    // Resolve the active voice on every utterance so a Settings change
+    // takes effect on the next cue without reconstructing the engine.
+    this.speechEngine = new SpeechEngine(() => this.getActiveVoice());
+  }
+
+  private getActiveVoice(): string | null | undefined {
+    return useSettingsStore.getState().settings.selectedVoiceId;
   }
 
   // -----------------------------------------------------------------------
@@ -66,12 +73,18 @@ export class AudioEngine {
   }
 
   /**
-   * Resume the Web AudioContext after a user gesture.
-   * No-op on native platforms.
+   * Resume the Web AudioContext and pre-warm the TTS engine after a user
+   * gesture. No-op on native platforms.
+   *
+   * Web SpeechSynthesis requires a user gesture before the first speak() will
+   * run, so we piggy-back the TTS prewarm on the same gesture that unlocks
+   * Web Audio. This cuts first-utterance latency on web the same way the
+   * cold-start prewarm does on native.
    */
   unlockWebAudio(): void {
     if (Platform.OS === 'web' && this.toneGenerator instanceof ToneGeneratorWeb) {
       this.toneGenerator.unlockAudioContext();
+      SpeechEngine.prewarm(this.getActiveVoice());
     }
   }
 

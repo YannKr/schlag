@@ -58,8 +58,12 @@ export default function RootLayout() {
   // Pre-warm the TTS engine after settings hydrate, and re-prewarm whenever
   // the user picks a different voice. Cuts 50–300ms off the first countdown
   // beep of a workout. See docs/i18n-l10n-a11y-research.md §3.3.
+  //
+  // Web is skipped here because SpeechSynthesis requires a user gesture before
+  // the first speak() will run; web prewarm fires from AudioEngine.unlockWebAudio
+  // on the gesture that unlocks Web Audio.
   useEffect(() => {
-    if (!settingsLoaded) return;
+    if (!settingsLoaded || Platform.OS === 'web') return;
     SpeechEngine.prewarm(selectedVoiceId);
   }, [settingsLoaded, selectedVoiceId]);
 
