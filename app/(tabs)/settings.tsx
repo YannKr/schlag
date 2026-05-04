@@ -6,7 +6,7 @@
  * persisted via the settingsStore (MMKV).
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -19,6 +19,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as Speech from 'expo-speech';
 
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSequenceStore } from '@/stores/sequenceStore';
@@ -30,6 +31,7 @@ import { FONT_SIZE, FONT_WEIGHT } from '@/constants/typography';
 import { LAYOUT, SPACING } from '@/constants/layout';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { VoicePicker } from '@/components/VoicePicker';
 import type { WorkoutTheme } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -307,6 +309,32 @@ export default function SettingsScreen() {
   // Local state for loading indicators and dialogs
   const [isExporting, setIsExporting] = useState(false);
   const [clearHistoryVisible, setClearHistoryVisible] = useState(false);
+  const [voicePickerVisible, setVoicePickerVisible] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<Speech.Voice[]>([]);
+
+  // Pre-fetch voice list so we can show the selected voice's name in the row.
+  // Cheap call; result is cached by expo-speech on native.
+  useEffect(() => {
+    let cancelled = false;
+    Speech.getAvailableVoicesAsync()
+      .then((list) => {
+        if (!cancelled) setAvailableVoices(list);
+      })
+      .catch(() => {
+        // Non-fatal: row will fall back to "Custom" for unknown ids.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedVoiceName = useMemo(() => {
+    if (settings.selectedVoiceId == null) return 'System default';
+    const match = availableVoices.find(
+      (v) => v.identifier === settings.selectedVoiceId,
+    );
+    return match?.name ?? 'Custom';
+  }, [availableVoices, settings.selectedVoiceId]);
 
   // -----------------------------------------------------------------------
   // Audio handlers
@@ -319,6 +347,19 @@ export default function SettingsScreen() {
 
   const handleVoiceToggle = useCallback(
     (val: boolean) => updateSetting('voiceCountdownEnabled', val),
+    [updateSetting],
+  );
+
+  const handleOpenVoicePicker = useCallback(() => {
+    setVoicePickerVisible(true);
+  }, []);
+
+  const handleCloseVoicePicker = useCallback(() => {
+    setVoicePickerVisible(false);
+  }, []);
+
+  const handleSelectVoice = useCallback(
+    (id: string | null) => updateSetting('selectedVoiceId', id),
     [updateSetting],
   );
 
@@ -546,6 +587,13 @@ export default function SettingsScreen() {
           onValueChange={handleVoiceToggle}
         />
         <Divider />
+        <ActionRow
+          label="Voice"
+          value={selectedVoiceName}
+          onPress={handleOpenVoicePicker}
+          accessibilityLabel={`Voice, ${selectedVoiceName}`}
+        />
+        <Divider />
         <VolumeRow
           label="Beep volume"
           value={settings.beepVolume}
@@ -733,6 +781,14 @@ export default function SettingsScreen() {
         onConfirm={handleConfirmClearHistory}
         onCancel={handleCancelClearHistory}
         destructive
+      />
+
+      {/* Voice picker */}
+      <VoicePicker
+        visible={voicePickerVisible}
+        selectedVoiceId={settings.selectedVoiceId}
+        onSelect={handleSelectVoice}
+        onClose={handleCloseVoicePicker}
       />
     </ScrollView>
   );
