@@ -26,7 +26,50 @@ const SPEECH_OPTIONS: Speech.SpeechOptions = {
 // SpeechEngine
 // ---------------------------------------------------------------------------
 
+/** Resolves the user's currently selected voice identifier, or null for default. */
+export type VoiceResolver = () => string | null | undefined;
+
 export class SpeechEngine {
+  private readonly getVoice: VoiceResolver;
+
+  /**
+   * @param getVoice  Callback returning the active expo-speech voice identifier,
+   *                  or null/undefined for the system default. Read on every
+   *                  speak() so a settings change takes effect immediately
+   *                  without reconstructing the engine.
+   */
+  constructor(getVoice: VoiceResolver = () => null) {
+    this.getVoice = getVoice;
+  }
+
+  /**
+   * Pre-warm the TTS engine to eliminate first-utterance latency.
+   *
+   * Fires a silent ` ` (single space) utterance at zero volume so the engine
+   * loads the voice into memory without producing audible output. This cuts
+   * 50–300ms off the very first countdown beep of a workout.
+   *
+   * Caller is responsible for timing: on native, call at cold start. On web,
+   * SpeechSynthesis requires a user gesture, so call from the same handler
+   * that unlocks Web Audio (see AudioEngine.unlockWebAudio).
+   *
+   * Errors are swallowed — audio failures must never crash the app.
+   *
+   * @param voice  Optional expo-speech voice identifier. Null/undefined uses
+   *               the system default voice for the language.
+   */
+  static prewarm(voice?: string | null): void {
+    try {
+      Speech.speak(' ', {
+        volume: 0,
+        language: 'en-US',
+        voice: voice ?? undefined,
+      });
+    } catch (error) {
+      console.warn('[SpeechEngine] prewarm error:', error);
+    }
+  }
+
   /**
    * Speak a countdown number ("3", "2", "1").
    * The speech is brief and punchy at natural speed.
@@ -63,6 +106,14 @@ export class SpeechEngine {
   }
 
   /**
+   * Speak arbitrary text (used for the voice-picker preview in Settings).
+   */
+  speakPreview(text: string): void {
+    if (!text) return;
+    this.stopAndSpeak(text, SPEECH_OPTIONS);
+  }
+
+  /**
    * Stop any currently playing speech.
    * Call this before starting a new workout or when the user stops.
    */
@@ -81,7 +132,10 @@ export class SpeechEngine {
   private stopAndSpeak(text: string, options: Speech.SpeechOptions): void {
     try {
       Speech.stop();
-      Speech.speak(text, options);
+      Speech.speak(text, {
+        ...options,
+        voice: this.getVoice() ?? undefined,
+      });
     } catch (error) {
       console.warn('[SpeechEngine] TTS error:', error);
     }

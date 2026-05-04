@@ -50,4 +50,7 @@ export interface AppSettings {
 
   /** Show/hide the camera pip overlay on the workout screen. */
   showCameraPreview: boolean;
+
+  /** Which expo-speech voice identifier to use for TTS. null = system default. */
+  selectedVoiceId: string | null;
 }

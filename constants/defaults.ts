@@ -103,6 +103,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cameraEnabled: false,
   cameraPosition: 'front' as const,
   showCameraPreview: true,
+  selectedVoiceId: null,
 } as const;
 
 // ---------------------------------------------------------------------------

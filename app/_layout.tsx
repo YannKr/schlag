@@ -7,6 +7,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { Alert, Platform, StyleSheet } from 'react-native';
 
 import { getTimerSession, clearTimerSession, getSequences, requestPersistentStorage, setStorageErrorHandler } from '@/lib/storage';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { SpeechEngine } from '@/lib/audio/speechEngine';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -20,6 +22,9 @@ export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     'JetBrainsMono-Bold': require('../assets/fonts/JetBrainsMono-Bold.ttf'),
   });
+
+  const settingsLoaded = useSettingsStore((s) => s.isLoaded);
+  const selectedVoiceId = useSettingsStore((s) => s.settings.selectedVoiceId);
 
   useEffect(() => {
     if (fontsLoaded) {
@@ -40,6 +45,27 @@ export default function RootLayout() {
       }
     });
   }, []);
+
+  // Hydrate global settings on cold start so prewarm and other launch-time
+  // logic can read them. Idempotent — per-tab loadFromStorage calls remain
+  // for safety but become no-ops after this runs.
+  useEffect(() => {
+    if (!useSettingsStore.getState().isLoaded) {
+      useSettingsStore.getState().loadFromStorage();
+    }
+  }, []);
+
+  // Pre-warm the TTS engine after settings hydrate, and re-prewarm whenever
+  // the user picks a different voice. Cuts 50–300ms off the first countdown
+  // beep of a workout. See docs/i18n-l10n-a11y-research.md §3.3.
+  //
+  // Web is skipped here because SpeechSynthesis requires a user gesture before
+  // the first speak() will run; web prewarm fires from AudioEngine.unlockWebAudio
+  // on the gesture that unlocks Web Audio.
+  useEffect(() => {
+    if (!settingsLoaded || Platform.OS === 'web') return;
+    SpeechEngine.prewarm(selectedVoiceId);
+  }, [settingsLoaded, selectedVoiceId]);
 
   // Check for a saved timer session on cold start and auto-navigate.
   useEffect(() => {
