@@ -37,6 +37,7 @@ playwright-report/
 
 # Build tooling
 .gstack/
+.wrangler/
 
 # BMAD framework (internal planning)
 _bmad/

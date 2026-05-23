@@ -25,9 +25,14 @@ export default function Root({ children }: PropsWithChildren) {
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
         />
+        {/* DSEG7 7-segment font CSS. Uses the non-minified static file so
+            SRI stays valid — jsdelivr's minified files are dynamically
+            regenerated and would break integrity checks. */}
         <link
           rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/dseg@0.46.0/css/dseg.min.css"
+          href="https://cdn.jsdelivr.net/npm/dseg@0.46.0/css/dseg.css"
+          integrity="sha384-hQhDV95Csi4psdLa/hWm+HM8l1ycIQlSJs4aea4dvJg+z6nCsAV0qItQNID/WdYB"
+          crossOrigin="anonymous"
         />
 
         <ScrollViewStyleReset />
