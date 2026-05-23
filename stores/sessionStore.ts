@@ -332,13 +332,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const newSessions: WorkoutSession[] = [];
 
     for (const incoming of data) {
-      // Validate minimum shape -- skip garbage entries silently.
+      // Validate minimum shape -- skip garbage entries silently. Defensive
+      // because the JSON comes from an untrusted file on disk: a malformed
+      // sequence_snapshot (null, wrong shape) would crash analytics later.
       if (
         !incoming ||
         typeof incoming.id !== 'string' ||
         typeof incoming.sequence_id !== 'string' ||
         typeof incoming.started_at !== 'string' ||
-        typeof incoming.status !== 'string'
+        typeof incoming.status !== 'string' ||
+        !Array.isArray(incoming.pauses) ||
+        !(incoming.sequence_snapshot === null ||
+          (typeof incoming.sequence_snapshot === 'object' &&
+           typeof (incoming.sequence_snapshot as { name?: unknown }).name === 'string'))
       ) {
         skipped++;
         continue;
@@ -509,8 +515,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (sessions.length === 0) return null;
 
     // Count by sequence name (from snapshot, so we capture the name at workout time).
+    // Snapshot is nulled out by pruneOldSessions after 90 days — skip those.
     const counts = new Map<string, number>();
     for (const s of sessions) {
+      if (s.sequence_snapshot === null) continue;
       const name = s.sequence_snapshot.name;
       counts.set(name, (counts.get(name) ?? 0) + 1);
     }

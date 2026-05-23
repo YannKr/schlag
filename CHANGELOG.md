@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.1.1] - 2026-05-22
+
+### Security
+- **Cloudflare Pages security headers.** Added `public/_headers` with strict Content-Security-Policy (allow-listing only the CDN origins MediaPipe actually uses at runtime), HSTS with 2-year max-age and preload, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, a tight `Permissions-Policy` (camera=self; mic/geo/payment denied), and Cross-Origin-Opener/Resource-Policy. Defense in depth for any future XSS bug.
+- **Subresource Integrity on third-party CSS.** The Expo HTML shell now loads DSEG7 from the static (non-minified) jsdelivr file with a sha384 `integrity` hash and `crossorigin="anonymous"`, so a jsdelivr compromise can't silently swap the stylesheet.
+- **Eliminated all dependency vulnerabilities.** `npm audit` went from 22 advisories (1 critical, 4 high, 16 moderate, 1 low) to **0**. Path: ran `npm audit fix` for the real CVEs, then added a top-level `uuid: ^13.0.0` override to clear the remaining 11 phantom alerts (one upstream `uuid <11.1.1` bounds-check CVE that only affects `uuid.v3/v5/v6`+buf, propagated through the dep tree even though only `uuid.v4` is used).
+- **Hardened JSON import validation.** `importSessions` now rejects entries with the wrong shape for `pauses` or `sequence_snapshot` (was: bare 4-field check, then spread the rest), and `getMostUsedSequence` no longer dereferences a snapshot that `pruneOldSessions` set to `null` after 90 days.
+- **.wrangler/ added to .gitignore** so Wrangler's local build/auth cache can't be accidentally committed if it grows.
+
 ## [0.2.1.0] - 2026-05-03
 
 ### Added
