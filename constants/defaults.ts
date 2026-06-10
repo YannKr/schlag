@@ -10,7 +10,6 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Interval } from '../types/interval';
 import type { Sequence } from '../types/sequence';
 import type { AppSettings } from '../types/settings';
-import type { ProStatus } from '../types/pro';
 
 import { DEFAULT_INTERVAL_COLOR } from './colors';
 
@@ -104,14 +103,4 @@ export const DEFAULT_SETTINGS: AppSettings = {
   cameraPosition: 'front' as const,
   showCameraPreview: true,
   selectedVoiceId: null,
-} as const;
-
-// ---------------------------------------------------------------------------
-// Default Pro status
-// ---------------------------------------------------------------------------
-
-export const DEFAULT_PRO_STATUS: ProStatus = {
-  pro_unlocked: false,
-  pro_purchased_at: null,
-  weekly_goal: null,
 } as const;

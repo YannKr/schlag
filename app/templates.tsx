@@ -4,12 +4,9 @@
  * Displays all developer-authored workout templates in a filterable gallery.
  * Users can filter by category, preview template details, and import a
  * template into their library as a new customizable sequence.
- *
- * Pro-gated templates show a lock badge and a disabled button when the user
- * has not purchased Schlag Pro.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
   Platform,
@@ -24,7 +21,6 @@ import { useRouter } from 'expo-router';
 import { v4 as uuidv4 } from 'uuid';
 
 import { useSequenceStore } from '@/stores/sequenceStore';
-import { useProStore } from '@/stores/proStore';
 import {
   WORKOUT_TEMPLATES,
   TEMPLATE_CATEGORIES,
@@ -35,7 +31,6 @@ import {
 import { APP_COLORS } from '@/constants/colors';
 import { FONT_SIZE, FONT_WEIGHT } from '@/constants/typography';
 import { LAYOUT, SPACING } from '@/constants/layout';
-import { ProBadge } from '@/components/ProBadge';
 import type { Sequence } from '@/types/sequence';
 
 // ---------------------------------------------------------------------------
@@ -107,14 +102,12 @@ function CategoryPill({ label, isActive, onPress }: CategoryPillProps) {
 
 interface TemplateCardProps {
   template: WorkoutTemplate;
-  isPro: boolean;
   onUse: (template: WorkoutTemplate) => void;
 }
 
 const TemplateCard = React.memo<TemplateCardProps>(
-  ({ template, isPro, onUse }) => {
-    const { sequence, is_free } = template;
-    const isLocked = !is_free && !isPro;
+  ({ template, onUse }) => {
+    const { sequence } = template;
     const totalDuration = formatTotalDuration(sequence);
     const colorStrip = sequence.intervals.slice(0, 6);
 
@@ -126,10 +119,8 @@ const TemplateCard = React.memo<TemplateCardProps>(
           : `${sequence.repeat_count} rounds`;
 
     const handleUse = useCallback(() => {
-      if (!isLocked) {
-        onUse(template);
-      }
-    }, [isLocked, onUse, template]);
+      onUse(template);
+    }, [onUse, template]);
 
     return (
       <View style={styles.card}>
@@ -150,12 +141,11 @@ const TemplateCard = React.memo<TemplateCardProps>(
 
         {/* Card body */}
         <View style={styles.cardContent}>
-          {/* Header row: name + Pro badge */}
+          {/* Header row: name */}
           <View style={styles.cardHeader}>
             <Text style={styles.cardName} numberOfLines={1}>
               {sequence.name}
             </Text>
-            {!is_free && <ProBadge style={styles.proBadge} />}
           </View>
 
           {/* Description */}
@@ -180,31 +170,15 @@ const TemplateCard = React.memo<TemplateCardProps>(
           {/* Action button */}
           <Pressable
             onPress={handleUse}
-            disabled={isLocked}
             accessibilityRole="button"
-            accessibilityLabel={
-              isLocked
-                ? `${sequence.name} requires Pro`
-                : `Use ${sequence.name} template`
-            }
-            accessibilityState={{ disabled: isLocked }}
+            accessibilityLabel={`Use ${sequence.name} template`}
             style={({ pressed }) => [
               styles.useButton,
-              isLocked && styles.useButtonLocked,
-              !isLocked && pressed && styles.useButtonPressed,
-              Platform.OS === 'web' &&
-                ({ cursor: isLocked ? 'not-allowed' : 'pointer' } as any),
+              pressed && styles.useButtonPressed,
+              Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
             ]}
           >
-            {isLocked && <Text style={styles.lockIconSmall}>{'\uD83D\uDD12'}</Text>}
-            <Text
-              style={[
-                styles.useButtonText,
-                isLocked && styles.useButtonTextLocked,
-              ]}
-            >
-              {isLocked ? 'Unlock with Pro' : 'Use Template'}
-            </Text>
+            <Text style={styles.useButtonText}>Use Template</Text>
           </Pressable>
         </View>
       </View>
@@ -219,20 +193,9 @@ const TemplateCard = React.memo<TemplateCardProps>(
 export default function TemplatesScreen() {
   const router = useRouter();
   const addSequence = useSequenceStore((s) => s.addSequence);
-  const loadProStatus = useProStore((s) => s.loadFromStorage);
-  const proLoaded = useProStore((s) => s.isLoaded);
-  const isPro = useProStore((s) => s.isPro);
 
   // Selected category filter (null = "All")
   const [selectedCategory, setSelectedCategory] = useState<TemplateCategory | null>(null);
-
-  // Hydrate Pro store if not loaded yet
-  useEffect(() => {
-    if (!proLoaded) {
-      loadProStatus();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Filter templates by category
   const filteredTemplates = useMemo(() => {
@@ -268,11 +231,10 @@ export default function TemplatesScreen() {
     ({ item }: ListRenderItemInfo<WorkoutTemplate>) => (
       <TemplateCard
         template={item}
-        isPro={isPro()}
         onUse={handleUseTemplate}
       />
     ),
-    [isPro, handleUseTemplate],
+    [handleUseTemplate],
   );
 
   const keyExtractor = useCallback(
@@ -477,9 +439,6 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: SPACING.sm,
   },
-  proBadge: {
-    marginLeft: SPACING.sm,
-  },
   cardDescription: {
     fontSize: FONT_SIZE.body,
     color: APP_COLORS.textSecondary,
@@ -513,9 +472,6 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     gap: SPACING.sm,
   },
-  useButtonLocked: {
-    backgroundColor: APP_COLORS.divider,
-  },
   useButtonPressed: {
     opacity: 0.8,
   },
@@ -523,12 +479,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: FONT_SIZE.bodyLarge,
     fontWeight: FONT_WEIGHT.semibold,
-  },
-  useButtonTextLocked: {
-    color: APP_COLORS.textMuted,
-  },
-  lockIconSmall: {
-    fontSize: 14,
   },
 
   // Empty state

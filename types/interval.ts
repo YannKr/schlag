@@ -27,7 +27,7 @@ export interface Interval {
   /** Optional coaching cue shown during the interval. Max 80 characters. */
   note: string;
 
-  /** v2: Per-interval audio tone selection (Schlag Pro). Defaults to 'default'. */
+  /** v2: Per-interval audio tone selection. Defaults to 'default'. */
   audio_tone?: import('./audio').IntervalAudioTone;
 
   /** v2: Per-interval custom audio URL (when audio_tone is 'custom'). */
