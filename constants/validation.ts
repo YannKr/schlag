@@ -66,6 +66,16 @@ export const AUDIO_ALLOWED_EXTENSIONS = ['.mp3', '.wav', '.m4a'] as const;
 /** Maximum import file size in bytes (10 MB per NFR). */
 export const IMPORT_FILE_MAX_SIZE_BYTES = 10 * 1024 * 1024;
 
+/** User-facing message for oversized import files (derived from the byte limit). */
+export const IMPORT_FILE_TOO_LARGE_MESSAGE =
+  `File exceeds the ${IMPORT_FILE_MAX_SIZE_BYTES / (1024 * 1024)} MB import limit.`;
+
+/** Maximum sequence entries accepted from a single import file. */
+export const IMPORT_MAX_SEQUENCES_PER_FILE = 500;
+
+/** Maximum session entries accepted from a single import file. */
+export const IMPORT_MAX_SESSIONS_PER_FILE = 2000;
+
 // ---------------------------------------------------------------------------
 // Beep tuning ranges
 // ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Sequence } from '@/types/sequence';
 import type { WorkoutSession, PauseEntry } from '@/types/session';
 import { getSessions, saveSessions } from '@/lib/storage';
+import { sanitizeSession } from '@/lib/importValidation';
 
 // ---------------------------------------------------------------------------
 // Store interface
@@ -332,28 +333,20 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const newSessions: WorkoutSession[] = [];
 
     for (const incoming of data) {
-      // Validate minimum shape -- skip garbage entries silently. Defensive
-      // because the JSON comes from an untrusted file on disk: a malformed
-      // sequence_snapshot (null, wrong shape) would crash analytics later.
-      if (
-        !incoming ||
-        typeof incoming.id !== 'string' ||
-        typeof incoming.sequence_id !== 'string' ||
-        typeof incoming.started_at !== 'string' ||
-        typeof incoming.status !== 'string' ||
-        !Array.isArray(incoming.pauses) ||
-        !(incoming.sequence_snapshot === null ||
-          (typeof incoming.sequence_snapshot === 'object' &&
-           typeof (incoming.sequence_snapshot as { name?: unknown }).name === 'string'))
-      ) {
+      // Sanitize the untrusted entry (whitelisted keys, clamped fields) --
+      // skip unsalvageable garbage silently. Defensive because the JSON comes
+      // from an untrusted file on disk: a malformed sequence_snapshot (null,
+      // wrong shape) would crash analytics later.
+      const sanitized = sanitizeSession(incoming);
+      if (!sanitized) {
         skipped++;
         continue;
       }
 
       // If the ID already exists locally, assign a fresh UUID (merge, never overwrite).
       const session: WorkoutSession = {
-        ...deepClone(incoming),
-        id: existingIds.has(incoming.id) ? uuidv4() : incoming.id,
+        ...sanitized,
+        id: existingIds.has(sanitized.id) ? uuidv4() : sanitized.id,
         updated_at: now(),
       };
 
