@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.3.0.0] - 2026-06-10
+
+### Added
+- **Import your sequences and history — everywhere.** The Import buttons in Settings now work on every platform: a JSON file picker on web, and the system document picker on iOS/Android (sequences and workout history). Imports merge (new items added, existing ones never overwritten), enforce the 10 MB file limit before reading, and run every entry through a strict sanitizer — durations clamped to valid ranges, names/notes truncated to their limits, colors validated against the 12-color palette, unknown fields dropped. A corrupt or malicious file can no longer crash the timer or sneak garbage into your library.
+- **Workout cues keep coming when you switch apps.** Backgrounding mid-workout now schedules OS notifications at every upcoming interval boundary ("Next: Squats" … "Workout complete 🎉"), so a locked phone still tells you when to switch. Returning to the app cancels them and the in-app audio takes over. If you muted the workout (M key), the notifications stay silent too.
+- **The web app works offline.** A service worker caches the app shell and static assets, so schlag loads without a connection after the first visit (your data was always local). Deploys still arrive instantly when online — pages are fetched network-first.
+- **Keyboard shortcuts now actually work** on the web workout screen — the shortcut system existed but was never wired up. Space (pause/resume), N/→ (skip), Escape (stop), E (expand/collapse the up-next timeline), M (mute everything, with an on-screen MUTED indicator), and ? (shortcut overlay).
+
+### Changed
+- **Schlag is free. Full stop.** All Pro/monetization scaffolding is gone: every template is available to everyone, and the Pro section, "Restore Purchase" placeholder, and pro-gating code were removed.
+- "Keep screen awake" in Settings now actually controls the workout-screen wake lock (it was previously always on regardless of the toggle).
+
+### Fixed
+- **The timer now fast-forwards correctly after long backgrounding.** Previously the engine could only advance one interval no matter how long the app was away — reopening after two minutes of a Tabata showed you stuck near where you left. The engine now lands on the mathematically correct interval, round, and remaining time, in exact agreement with the scheduled notifications.
+- Pressing Space during the get-ready countdown or after a workout finished no longer corrupts the session log with phantom pause entries.
+- The workout screen no longer re-registers its keyboard listener 60 times per second (performance fix on the most timing-sensitive screen).
+- A rapid background/foreground flip can no longer leave stale or duplicate notifications scheduled (operations are now serialized with a generation counter).
+- Importing a file with a negative repeat count no longer flips the sequence into infinite mode.
+- The service worker refuses to cache redirected or cross-origin responses (captive-portal poisoning protection) and prunes old cached assets across deploys.
+
+### Security
+- `@mediapipe/tasks-vision` is pinned to an exact version with a guard test that fails if the npm package and the hardcoded WASM CDN URL ever drift apart.
+- `npm audit`: 0 vulnerabilities (cleared the `shell-quote` advisory).
+
 ## [0.2.1.1] - 2026-05-22
 
 ### Security
