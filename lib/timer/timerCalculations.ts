@@ -6,7 +6,7 @@
  * and absolute-time arithmetic to prevent drift accumulation.
  */
 
-import type { Sequence, Interval, TimelineEntry } from '@/types';
+import type { Sequence, Interval, TimelineEntry, TimerState } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Remaining time
@@ -136,6 +136,153 @@ export function flattenSequenceToTimeline(
   }
 
   return entries;
+}
+
+// ---------------------------------------------------------------------------
+// Notification boundary events
+// ---------------------------------------------------------------------------
+
+/**
+ * An upcoming interval-boundary event, used to schedule OS-level local
+ * notifications when the app is backgrounded (JS audio cues cannot fire
+ * from a backgrounded managed RN app).
+ */
+export interface BoundaryEvent {
+  /** Absolute epoch ms when the notification should fire. */
+  fireDate: number;
+  title: string;
+  body: string;
+}
+
+/** Platform-safe cap on scheduled notifications (iOS allows 64 pending). */
+export const MAX_BOUNDARY_EVENTS = 60;
+
+/** Position within the unrolled workout timeline. */
+interface TimelinePosition {
+  intervalIndex: number;
+  round: number;
+  isRestBetweenSets: boolean;
+}
+
+/**
+ * Compute the position that follows `pos`, mirroring the TimerEngine's
+ * advance semantics (rest-between-sets insertion, round looping,
+ * finish-after-round). Returns null when `pos` is the final interval.
+ */
+function nextPosition(
+  sequence: Sequence,
+  pos: TimelinePosition,
+  finishAfterRound: boolean,
+): TimelinePosition | null {
+  const isInfinite = sequence.repeat_count === 0;
+  const totalRounds = isInfinite ? Infinity : sequence.repeat_count;
+
+  if (pos.isRestBetweenSets) {
+    // Rest complete -> first interval of the next round.
+    return { intervalIndex: 0, round: pos.round + 1, isRestBetweenSets: false };
+  }
+
+  if (pos.intervalIndex < sequence.intervals.length - 1) {
+    // More intervals in this round.
+    return {
+      intervalIndex: pos.intervalIndex + 1,
+      round: pos.round,
+      isRestBetweenSets: false,
+    };
+  }
+
+  // At the last interval of a round.
+  if (pos.round < totalRounds && !finishAfterRound) {
+    if (sequence.rest_between_sets_seconds > 0) {
+      return { ...pos, isRestBetweenSets: true };
+    }
+    return { intervalIndex: 0, round: pos.round + 1, isRestBetweenSets: false };
+  }
+
+  // Final interval of the final round (or finishing after this round).
+  return null;
+}
+
+/**
+ * Compute the upcoming interval-boundary events for a running workout.
+ *
+ * Pure function: anchored to the engine's absolute start time plus
+ * accumulated paused time, so the result is exact regardless of when
+ * it is called within the current interval.
+ *
+ * - Each interval transition produces a "Next: [name]" event.
+ * - The final boundary produces a "Workout complete 🎉" event.
+ * - With auto-advance OFF the timer freezes at each boundary until the
+ *   user taps, so only the first boundary is real.
+ * - Events in the past (fireDate <= now) are skipped.
+ * - Capped at `maxEvents` (infinite-repeat sequences cap naturally).
+ *
+ * Returns [] unless the state is 'running'.
+ */
+export function computeUpcomingBoundaries(
+  sequence: Sequence,
+  state: TimerState,
+  now: number = Date.now(),
+  maxEvents: number = MAX_BOUNDARY_EVENTS,
+): BoundaryEvent[] {
+  if (state.status !== 'running' || sequence.intervals.length === 0) return [];
+
+  const durationMsAt = (pos: TimelinePosition): number =>
+    (pos.isRestBetweenSets
+      ? sequence.rest_between_sets_seconds
+      : sequence.intervals[pos.intervalIndex].duration_seconds) * 1000;
+
+  const nameAt = (pos: TimelinePosition): string =>
+    pos.isRestBetweenSets ? 'Rest' : sequence.intervals[pos.intervalIndex].name;
+
+  const events: BoundaryEvent[] = [];
+
+  let pos: TimelinePosition = {
+    intervalIndex: state.currentIntervalIndex,
+    round: state.currentRound,
+    isRestBetweenSets: state.isRestBetweenSets,
+  };
+
+  // End of the current interval, anchored to its absolute start time
+  // shifted by the time spent paused.
+  let boundaryTime = state.absoluteStartTime + state.pausedElapsed + durationMsAt(pos);
+
+  // Safety bound mirrors TimerEngine's advance loop.
+  let safetyCounter = 0;
+  const MAX_ITERATIONS = 10000;
+
+  while (events.length < maxEvents && safetyCounter < MAX_ITERATIONS) {
+    safetyCounter++;
+
+    const next = nextPosition(sequence, pos, state.finishAfterRound);
+
+    if (boundaryTime > now) {
+      if (next === null) {
+        events.push({
+          fireDate: boundaryTime,
+          title: 'Workout complete 🎉',
+          body: sequence.name,
+        });
+      } else {
+        events.push({
+          fireDate: boundaryTime,
+          title: `Next: ${nameAt(next)}`,
+          body: `${nameAt(pos)} complete · ${formatTime(durationMsAt(next))}`,
+        });
+      }
+    }
+
+    if (next === null) break;
+
+    // Auto-advance OFF: the timer freezes at the boundary until the user
+    // taps, so later boundaries have no predictable fire time.
+    if (!sequence.auto_advance) break;
+
+    pos = next;
+    boundaryTime += durationMsAt(pos);
+  }
+
+  return events;
 }
 
 // ---------------------------------------------------------------------------

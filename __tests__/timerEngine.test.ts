@@ -1197,6 +1197,232 @@ describe('Session persistence', () => {
 });
 
 // ===========================================================================
+// 7. Background catch-up (fast-forward after long gaps)
+// ===========================================================================
+
+describe('Background catch-up', () => {
+  /** 5 × 30s work intervals, single round, auto-advance ON. */
+  function makeFiveByThirty(): Sequence {
+    return makeSequence({
+      repeat_count: 1,
+      auto_advance: true,
+      intervals: Array.from({ length: 5 }, () =>
+        makeInterval({ duration_seconds: 30 }),
+      ),
+    });
+  }
+
+  it('fast-forwards through multiple elapsed intervals after a long gap', () => {
+    engine.startWorkout(makeFiveByThirty());
+    engine.tick();
+
+    // Backgrounded for 2m05s: intervals 0-3 (120s) fully elapsed,
+    // interval 4 is 5s in -> 25s remaining.
+    advanceTime(125_000);
+    const tick = engine.tick()!;
+
+    expect(tick.status).toBe('running');
+    expect(tick.currentIntervalIndex).toBe(4);
+    expect(tick.currentRound).toBe(1);
+    expect(tick.remainingMs).toBe(25_000);
+
+    // The landed interval is anchored at its mathematical start time,
+    // not at Date.now().
+    expect(engine.getState()!.absoluteStartTime).toBe(now - 5_000);
+  });
+
+  it('completes when the entire workout elapsed in the background', () => {
+    engine.startWorkout(makeFiveByThirty());
+    engine.tick();
+
+    advanceTime(200_000); // > 150s total duration
+    const tick = engine.tick()!;
+
+    expect(tick.status).toBe('completed');
+    expect(tick.remainingMs).toBe(0);
+  });
+
+  it('fast-forwards across rounds and rest-between-sets', () => {
+    // 2 rounds × [10s, 10s] with 5s rest = 10+10+5+10+10 = 45s total.
+    const seq = makeSequence({
+      repeat_count: 2,
+      rest_between_sets_seconds: 5,
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 10 }),
+        makeInterval({ duration_seconds: 10 }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.tick();
+
+    // 27s in: round 2 interval 0 spans t=25..35 -> 8s remaining.
+    advanceTime(27_000);
+    const tick = engine.tick()!;
+
+    expect(tick.currentRound).toBe(2);
+    expect(tick.currentIntervalIndex).toBe(0);
+    expect(tick.isRestBetweenSets).toBe(false);
+    expect(tick.remainingMs).toBe(8_000);
+  });
+
+  it('lands inside rest-between-sets when the gap ends there', () => {
+    // 2 rounds × [10s] with 20s rest: rest spans t=10..30.
+    const seq = makeSequence({
+      repeat_count: 2,
+      rest_between_sets_seconds: 20,
+      auto_advance: true,
+      intervals: [makeInterval({ duration_seconds: 10 })],
+    });
+    engine.startWorkout(seq);
+    engine.tick();
+
+    advanceTime(15_000);
+    const tick = engine.tick()!;
+
+    expect(tick.isRestBetweenSets).toBe(true);
+    expect(tick.remainingMs).toBe(15_000);
+  });
+
+  it('fast-forwards round counting in infinite mode', () => {
+    const seq = makeSequence({
+      repeat_count: 0, // infinite
+      rest_between_sets_seconds: 0,
+      auto_advance: true,
+      intervals: [makeInterval({ duration_seconds: 10 })],
+    });
+    engine.startWorkout(seq);
+    engine.tick();
+
+    advanceTime(95_000); // 9 full rounds + 5s into round 10
+    const tick = engine.tick()!;
+
+    expect(tick.status).toBe('running');
+    expect(tick.currentRound).toBe(10);
+    expect(tick.remainingMs).toBe(5_000);
+  });
+
+  it('accounts for pausedElapsed when fast-forwarding', () => {
+    const seq = makeSequence({
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 30 }),
+        makeInterval({ duration_seconds: 30 }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.tick();
+
+    advanceTime(5_000);
+    engine.pause();
+    advanceTime(10_000);
+    engine.resume(); // pausedElapsed = 10s -> interval 0 ends at t0+40s
+
+    // 40s later (now = t0+55s): interval 1 spans t0+40..70 -> 15s left.
+    advanceTime(40_000);
+    const tick = engine.tick()!;
+
+    expect(tick.currentIntervalIndex).toBe(1);
+    expect(tick.remainingMs).toBe(15_000);
+  });
+
+  it('fires at most the landed interval cues after fast-forwarding (no beep burst)', () => {
+    engine.startWorkout(makeFiveByThirty());
+    const first = engine.tick()!;
+    engine.getAudioCuesToFire(first.remainingMs); // consume interval 0's start
+
+    advanceTime(125_000); // skips intervals 0-3, lands 5s into interval 4
+    const tick = engine.tick()!;
+    const cues = engine.getAudioCuesToFire(tick.remainingMs);
+
+    // Only the landed interval's start cue — no machine-gun of end/start
+    // beeps for the intervals that elapsed while backgrounded.
+    expect(cues).toEqual(['intervalStart']);
+  });
+
+  it('restoreSession + first tick fast-forwards after a process kill', () => {
+    const seq = makeFiveByThirty();
+    engine.startWorkout(seq);
+    advanceTime(10_000); // 10s into interval 0
+    const session = engine.saveSession()!;
+
+    advanceTime(85_000); // process dead for 85s -> 95s total elapsed
+
+    const engine2 = new TimerEngine();
+    engine2.restoreSession(session, seq);
+    const tick = engine2.tick()!;
+
+    // 95s elapsed: intervals 0-2 done (90s), interval 3 is 5s in.
+    expect(tick.status).toBe('running');
+    expect(tick.currentIntervalIndex).toBe(3);
+    expect(tick.remainingMs).toBe(25_000);
+  });
+
+  it('restoreSession + first tick completes when the workout fully elapsed', () => {
+    const seq = makeFiveByThirty();
+    engine.startWorkout(seq);
+    advanceTime(10_000);
+    const session = engine.saveSession()!;
+
+    advanceTime(300_000); // way past the 150s total
+
+    const engine2 = new TimerEngine();
+    engine2.restoreSession(session, seq);
+    const tick = engine2.tick()!;
+
+    expect(tick.status).toBe('completed');
+  });
+
+  it('skip() still anchors the next interval at Date.now()', () => {
+    engine.startWorkout(makeFiveByThirty());
+    engine.tick();
+
+    advanceTime(12_000); // mid-interval 0
+    engine.skip();
+
+    const state = engine.getState()!;
+    expect(state.currentIntervalIndex).toBe(1);
+    expect(state.absoluteStartTime).toBe(now); // skip time, not t0+30s
+
+    const tick = engine.tick()!;
+    expect(tick.remainingMs).toBe(30_000);
+  });
+});
+
+// ===========================================================================
+// 8. restoreSession bounds checking
+// ===========================================================================
+
+describe('restoreSession bounds checking', () => {
+  it('rejects a session whose interval index is out of range', () => {
+    const seq = makeSequence(); // 2 intervals
+    engine.startWorkout(seq);
+    const session = engine.saveSession()!;
+    session.state.currentIntervalIndex = 99;
+
+    const engine2 = new TimerEngine();
+    engine2.restoreSession(session, seq);
+
+    expect(engine2.getState()).toBeNull();
+    expect(engine2.isActive()).toBe(false);
+    expect(engine2.tick()).toBeNull();
+  });
+
+  it('rejects a session with a negative interval index', () => {
+    const seq = makeSequence();
+    engine.startWorkout(seq);
+    const session = engine.saveSession()!;
+    session.state.currentIntervalIndex = -1;
+
+    const engine2 = new TimerEngine();
+    engine2.restoreSession(session, seq);
+
+    expect(engine2.getState()).toBeNull();
+    expect(engine2.isActive()).toBe(false);
+  });
+});
+
+// ===========================================================================
 // Edge cases
 // ===========================================================================
 

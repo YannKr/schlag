@@ -219,7 +219,14 @@ export class TimerEngine {
       safetyCounter < MAX_ITERATIONS
     ) {
       safetyCounter++;
-      this.advanceToNext();
+
+      // Anchor the next interval at the current interval's mathematical
+      // end time (not Date.now()), so that after a long background gap
+      // the loop genuinely fast-forwards through every elapsed interval
+      // and lands on the correct one at the correct remaining time.
+      const intervalEndTime =
+        this.state.absoluteStartTime + durationMs + this.state.pausedElapsed;
+      this.advanceToNext(intervalEndTime);
 
       // Recalculate for the new interval.
       currentInterval = this.getCurrentInterval();
@@ -383,8 +390,18 @@ export class TimerEngine {
    * correct position automatically on the next tick().
    *
    * If the session was paused, it stays paused at exactly where it was.
+   *
+   * If the saved interval index is out of range for the given sequence
+   * (e.g. the sequence was edited while the process was dead), the
+   * session is treated as invalid and the engine stays idle.
    */
   restoreSession(session: TimerSession, sequence: Sequence): void {
+    const idx = session.state.currentIntervalIndex;
+    if (idx < 0 || idx >= sequence.intervals.length) {
+      this.stop();
+      return;
+    }
+
     this.sequence = sequence;
     this.timeline = flattenSequenceToTimeline(sequence);
     this.firedCues.clear();
@@ -482,8 +499,14 @@ export class TimerEngine {
   /**
    * Advance to the next interval or round.
    * Handles rest-between-sets insertion and infinite repeat looping.
+   *
+   * @param anchorAt Epoch ms at which the next interval starts. Defaults
+   *   to Date.now() (correct for user-initiated skip()). The tick()
+   *   catch-up loop passes the previous interval's mathematical end time
+   *   instead, so multiple elapsed intervals fast-forward correctly
+   *   after a long background gap.
    */
-  private advanceToNext(): void {
+  private advanceToNext(anchorAt: number = Date.now()): void {
     if (!this.state || !this.sequence) return;
 
     const seq = this.sequence;
@@ -501,7 +524,7 @@ export class TimerEngine {
         status: 'running',
         currentIntervalIndex: 0,
         currentRound: currentRound + 1,
-        absoluteStartTime: Date.now(),
+        absoluteStartTime: anchorAt,
         pausedElapsed: 0,
         pausedAt: null,
         isRestBetweenSets: false,
@@ -515,7 +538,7 @@ export class TimerEngine {
         ...this.state,
         status: 'running',
         currentIntervalIndex: currentIntervalIndex + 1,
-        absoluteStartTime: Date.now(),
+        absoluteStartTime: anchorAt,
         pausedElapsed: 0,
         pausedAt: null,
       };
@@ -530,7 +553,7 @@ export class TimerEngine {
         this.state = {
           ...this.state,
           status: 'running',
-          absoluteStartTime: Date.now(),
+          absoluteStartTime: anchorAt,
           pausedElapsed: 0,
           pausedAt: null,
           isRestBetweenSets: true,
@@ -542,7 +565,7 @@ export class TimerEngine {
           status: 'running',
           currentIntervalIndex: 0,
           currentRound: currentRound + 1,
-          absoluteStartTime: Date.now(),
+          absoluteStartTime: anchorAt,
           pausedElapsed: 0,
           pausedAt: null,
         };
@@ -556,7 +579,7 @@ export class TimerEngine {
         this.state = {
           ...this.state,
           status: 'running',
-          absoluteStartTime: Date.now(),
+          absoluteStartTime: anchorAt,
           pausedElapsed: 0,
           pausedAt: null,
           isRestBetweenSets: true,
@@ -567,7 +590,7 @@ export class TimerEngine {
           status: 'running',
           currentIntervalIndex: 0,
           currentRound: currentRound + 1,
-          absoluteStartTime: Date.now(),
+          absoluteStartTime: anchorAt,
           pausedElapsed: 0,
           pausedAt: null,
         };
