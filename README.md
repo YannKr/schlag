@@ -15,8 +15,10 @@ Free, no ads, no paywalls.
 - Three workout themes: dark, light, and interval-color tinted
 - 10 built-in workout templates (Tabata, EMOM, AMRAP, strength, mobility)
 - Workout history with streaks and analytics
-- Export/import sequences as JSON
-- Works fully offline — all data stored on-device
+- Export/import sequences and workout history as JSON (imports merge, never overwrite)
+- Background notifications keep interval cues coming when the app is backgrounded (iOS/Android)
+- Keyboard shortcuts on the web workout screen: Space (pause), N (skip), Esc (stop), E (expand), M (mute), ? (help)
+- Works fully offline — all data stored on-device, and the web app loads without a connection (service worker)
 
 ## Tech Stack
 
@@ -67,6 +69,7 @@ lib/              # Core business logic (timer engine, audio engine, storage)
 hooks/            # Custom React hooks
 types/            # TypeScript type definitions
 constants/        # Colors, typography, layout, defaults, templates
+public/           # Static web assets (service worker, security headers)
 __tests__/        # Jest unit tests
 e2e/              # Playwright E2E tests
 ```
