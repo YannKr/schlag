@@ -30,8 +30,15 @@ export interface KeyboardShortcutHandlers {
   onToggleExpanded?: () => void;
   onToggleMute?: () => void;
   onShowShortcuts?: () => void;
+  /**
+   * Explicit close for the overlay. Used instead of toggling via
+   * onShowShortcuts while the overlay is open — react-native-web's Modal also
+   * handles Escape (onRequestClose), and a toggle racing that close can
+   * instantly reopen the overlay. Close is idempotent; toggle is not.
+   */
+  onHideShortcuts?: () => void;
   isPaused: boolean;
-  /** When true, only ? and Escape fire (both invoke onShowShortcuts to close). */
+  /** When true, only ? and Escape fire (both close the overlay). */
   isOverlayVisible?: boolean;
 }
 
@@ -59,6 +66,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers): void {
         onToggleExpanded,
         onToggleMute,
         onShowShortcuts,
+        onHideShortcuts,
         isPaused,
         isOverlayVisible,
       } = handlersRef.current;
@@ -75,12 +83,23 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers): void {
       }
 
       // While the overlay is open, swallow workout shortcuts — only ? and
-      // Escape pass through, both toggling the overlay closed.
+      // Escape pass through, both closing the overlay.
       if (isOverlayVisible) {
         if (event.key === '?' || event.key === 'Escape') {
           event.preventDefault();
-          onShowShortcuts?.();
+          (onHideShortcuts ?? onShowShortcuts)?.();
         }
+        return;
+      }
+
+      // Space on a focused button must activate the button, not the timer —
+      // keyboard users tabbing to Skip and pressing Space would otherwise
+      // both click it AND toggle pause (react-native-web renders Pressables
+      // as [role="button"] elements that handle their own keyboard events).
+      if (
+        event.key === ' ' &&
+        target?.closest?.('button, select, [role="button"]')
+      ) {
         return;
       }
 

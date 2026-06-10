@@ -38,6 +38,16 @@
 **What:** Verify on real hardware: Android Doze/OEM battery optimization can delay DATE-trigger notifications (no SCHEDULE_EXACT_ALARM; test Samsung/Xiaomi); force-quitting mid-workout leaves up to 60 future notifications firing with no in-app cancel path (consider a wall-clock horizon cap or a final summary notification); iOS permission dialog appears while the timer is already counting.
 **Added:** 2026-06-10 via /ship adversarial review
 
+### Mute should also cut in-flight tones
+**Priority:** P3
+**What:** `setMuted(true)` stops TTS mid-utterance but lets an already-playing tone finish (built-in beeps are ≤1.5s so it's barely noticeable; a long custom end-audio file would keep playing). Add a `stopAll()` to the ToneGenerator interface and call it from `AudioEngine.setMuted`.
+**Added:** 2026-06-10 via Gemini cross-model review
+
+### Service worker cache eviction is racy under concurrent puts
+**Priority:** P3
+**What:** Concurrent `putStaticAsset` calls on first load can read the same `cache.keys()` snapshot and double-delete the same "oldest" entries — harmless (deletes are idempotent) but can over-evict a few assets. Defer pruning to the `activate` event or serialize it.
+**Added:** 2026-06-10 via Gemini cross-model review
+
 ### Unify nextPosition() with TimerEngine.advanceToNext
 **Priority:** P2
 **What:** `computeUpcomingBoundaries`' position-walking helper mirrors the engine's advance semantics by hand. The catch-up fix made them agree, but nothing structurally pins them together — extract a shared pure helper or add a property test asserting boundaries match an actual engine run.

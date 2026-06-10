@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import * as Speech from 'expo-speech';
 
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -305,35 +306,43 @@ async function pickJsonArrayNative(): Promise<unknown[] | null> {
   if (result.canceled || !result.assets?.[0]) return null;
 
   const asset = result.assets[0];
-  // Enforce the size limit BEFORE reading the file into memory.
-  if (asset.size != null && asset.size > IMPORT_FILE_MAX_SIZE_BYTES) {
-    Alert.alert('Import Failed', IMPORT_FILE_TOO_LARGE_MESSAGE);
-    return null;
-  }
-
-  // expo-file-system is not a declared dependency, so read the file:// URI
-  // via fetch (supported by React Native's networking layer).
-  const response = await fetch(asset.uri);
-  let text: string;
-  if (asset.size == null) {
-    // Backstop when the picker did not report a size: check the blob size
-    // before materializing the whole file as a string.
-    const blob = await response.blob();
-    if (blob.size > IMPORT_FILE_MAX_SIZE_BYTES) {
+  const file = new File(asset.uri);
+  try {
+    // Enforce the size limit BEFORE reading the file into memory. When the
+    // picker does not report a size (some Android SAF providers), stat the
+    // cached copy on disk instead of materializing it into JS first.
+    let size: number | null | undefined = asset.size;
+    if (size == null) {
+      try {
+        size = file.size;
+      } catch {
+        size = null;
+      }
+    }
+    if (size == null) {
+      Alert.alert('Import Failed', 'Could not determine the file size.');
+      return null;
+    }
+    if (size > IMPORT_FILE_MAX_SIZE_BYTES) {
       Alert.alert('Import Failed', IMPORT_FILE_TOO_LARGE_MESSAGE);
       return null;
     }
-    text = await blob.text();
-  } else {
-    text = await response.text();
-  }
 
-  const data = JSON.parse(text);
-  if (!Array.isArray(data)) {
-    Alert.alert('Import Failed', 'File does not contain a valid JSON array.');
-    return null;
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!Array.isArray(data)) {
+      Alert.alert('Import Failed', 'File does not contain a valid JSON array.');
+      return null;
+    }
+    return data;
+  } finally {
+    // The picker copied the file into the app cache; don't leak it.
+    try {
+      file.delete();
+    } catch {
+      // Best-effort cleanup — the OS clears the cache directory eventually.
+    }
   }
-  return data;
 }
 
 /**

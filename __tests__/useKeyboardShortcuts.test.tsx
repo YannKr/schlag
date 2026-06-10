@@ -101,6 +101,8 @@ function latestKeydownHandler(): (event: unknown) => void {
 interface FakeTarget {
   tagName: string;
   isContentEditable: boolean;
+  /** Mirrors Element.closest — used by the focused-button Space guard. */
+  closest?: (selector: string) => unknown;
 }
 
 function press(key: string, target: FakeTarget | null = null) {
@@ -251,5 +253,36 @@ describe('useKeyboardShortcuts', () => {
     expect(handlers.onToggleMute).not.toHaveBeenCalled();
     expect(handlers.onPause).not.toHaveBeenCalled();
     expect(handlers.onToggleExpanded).not.toHaveBeenCalled();
+  });
+
+  it('Escape closes via onHideShortcuts (not the toggle) when provided', () => {
+    const handlers = makeHandlers({
+      isOverlayVisible: true,
+      onHideShortcuts: jest.fn(),
+    });
+    render(handlers);
+    press('Escape');
+    press('?');
+    expect(handlers.onHideShortcuts).toHaveBeenCalledTimes(2);
+    expect(handlers.onShowShortcuts).not.toHaveBeenCalled();
+  });
+
+  it('Space on a focused button is left to the button, other keys still fire', () => {
+    const handlers = makeHandlers();
+    render(handlers);
+    const button: FakeTarget = {
+      tagName: 'DIV',
+      isContentEditable: false,
+      closest: (selector: string) =>
+        selector.includes('[role="button"]') ? {} : null,
+    };
+    const spaceEvent = press(' ', button);
+    expect(handlers.onPause).not.toHaveBeenCalled();
+    expect(spaceEvent.preventDefault).not.toHaveBeenCalled();
+    // Non-activation keys are unaffected by button focus.
+    press('m', button);
+    press('Escape', button);
+    expect(handlers.onToggleMute).toHaveBeenCalledTimes(1);
+    expect(handlers.onStop).toHaveBeenCalledTimes(1);
   });
 });

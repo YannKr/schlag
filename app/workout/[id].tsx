@@ -751,6 +751,7 @@ export default function WorkoutScreen() {
     onToggleExpanded: handleToggleExpanded,
     onToggleMute: handleToggleMute,
     onShowShortcuts: handleToggleShortcuts,
+    onHideShortcuts: handleCloseShortcuts,
     isPaused,
     isOverlayVisible: showShortcuts,
   });

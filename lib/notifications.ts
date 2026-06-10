@@ -57,8 +57,12 @@ let opChain: Promise<void> = Promise.resolve();
 
 /** Append an operation to the serial chain. */
 function enqueue(op: () => Promise<void>): Promise<void> {
-  opChain = opChain.then(op);
-  return opChain;
+  const result = opChain.then(op);
+  // Keep the chain itself rejection-proof: if one op throws synchronously
+  // (before its internal try/catch), a bare chain would stay rejected and
+  // silently skip every future schedule/cancel for the session.
+  opChain = result.catch(() => {});
+  return result;
 }
 
 // ---------------------------------------------------------------------------
