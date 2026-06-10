@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { Sequence } from '@/types/sequence';
 import type { Interval } from '@/types/interval';
 import { getSequences, saveSequences } from '@/lib/storage';
+import { sanitizeSequence } from '@/lib/importValidation';
 
 // ---------------------------------------------------------------------------
 // Store interface
@@ -234,19 +235,21 @@ export const useSequenceStore = create<SequenceStore>((set, get) => ({
     const newSequences: Sequence[] = [];
 
     for (const incoming of data) {
-      // Validate minimum shape -- skip garbage entries silently.
-      if (!incoming || typeof incoming.name !== 'string' || !Array.isArray(incoming.intervals)) {
+      // Sanitize the untrusted entry (whitelisted keys, clamped fields) --
+      // skip unsalvageable garbage silently.
+      const sanitized = sanitizeSequence(incoming);
+      if (!sanitized) {
         skipped++;
         continue;
       }
 
       // If the ID already exists locally, assign a fresh UUID (merge, never overwrite).
       const sequence: Sequence = {
-        ...deepClone(incoming),
-        id: existingIds.has(incoming.id) ? uuidv4() : incoming.id,
+        ...sanitized,
+        id: existingIds.has(sanitized.id) ? uuidv4() : sanitized.id,
         // Ensure intervals also have unique IDs.
-        intervals: incoming.intervals.map((interval) => ({
-          ...deepClone(interval),
+        intervals: sanitized.intervals.map((interval) => ({
+          ...interval,
           id: uuidv4(),
         })),
         updated_at: now(),

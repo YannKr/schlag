@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { Alert, Platform, StyleSheet } from 'react-native';
 
 import { getTimerSession, clearTimerSession, getSequences, requestPersistentStorage, setStorageErrorHandler } from '@/lib/storage';
+import { registerServiceWorker } from '@/lib/registerServiceWorker';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { SpeechEngine } from '@/lib/audio/speechEngine';
 
@@ -31,6 +32,11 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
+
+  // Register the service worker for offline support (web production only).
+  useEffect(() => {
+    registerServiceWorker();
+  }, []);
 
   // Ask the browser to keep localStorage data permanently (prevents Firefox eviction).
   // Show an alert if any storage write fails (quota exceeded, etc.).

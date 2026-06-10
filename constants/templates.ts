@@ -1,12 +1,11 @@
 /**
  * Developer-authored workout templates for Schlag v2.
  *
- * 10 curated templates spanning common training modalities. Three templates
- * are free; seven require Schlag Pro. Templates are Sequence objects with
- * deterministic IDs so they can be identified across app versions.
+ * 10 curated templates spanning common training modalities. Templates are
+ * Sequence objects with deterministic IDs so they can be identified across
+ * app versions.
  *
- * Each template is wrapped in a WorkoutTemplate that adds category metadata
- * and a free/Pro flag.
+ * Each template is wrapped in a WorkoutTemplate that adds category metadata.
  */
 
 import type { Sequence } from '@/types/sequence';
@@ -28,7 +27,6 @@ export type TemplateCategory =
 export interface WorkoutTemplate {
   sequence: Sequence;
   category: TemplateCategory;
-  is_free: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +83,7 @@ function makeInterval(
 const AUTHORED_AT = '2026-01-01T00:00:00.000Z';
 
 // ---------------------------------------------------------------------------
-// 1. Tabata Classic (FREE)
+// 1. Tabata Classic
 //    20s work / 10s rest x 8 rounds. Work=Red, Rest=Teal. Total 4:00
 // ---------------------------------------------------------------------------
 
@@ -96,7 +94,6 @@ const tabataClassicIntervals: Interval[] = [
 
 const tabataClassic: WorkoutTemplate = {
   category: 'tabata',
-  is_free: true,
   sequence: {
     id: 'template-tabata-classic',
     name: 'Tabata Classic',
@@ -113,7 +110,7 @@ const tabataClassic: WorkoutTemplate = {
 };
 
 // ---------------------------------------------------------------------------
-// 2. EMOM 10-Minute (FREE)
+// 2. EMOM 10-Minute
 //    1 interval of 60s, repeat 10x. Green. 10:00 total
 // ---------------------------------------------------------------------------
 
@@ -123,7 +120,6 @@ const emom10Intervals: Interval[] = [
 
 const emom10: WorkoutTemplate = {
   category: 'emom',
-  is_free: true,
   sequence: {
     id: 'template-emom-10',
     name: 'EMOM 10-Minute',
@@ -140,7 +136,7 @@ const emom10: WorkoutTemplate = {
 };
 
 // ---------------------------------------------------------------------------
-// 3. Strength 5x5 Rest Timer (FREE)
+// 3. Strength 5x5 Rest Timer
 //    3:00 rest interval, repeat 5x. Slate. 15:00 total
 // ---------------------------------------------------------------------------
 
@@ -150,7 +146,6 @@ const strength5x5Intervals: Interval[] = [
 
 const strength5x5: WorkoutTemplate = {
   category: 'strength',
-  is_free: true,
   sequence: {
     id: 'template-strength-5x5',
     name: 'Strength 5x5 Rest Timer',
@@ -167,7 +162,7 @@ const strength5x5: WorkoutTemplate = {
 };
 
 // ---------------------------------------------------------------------------
-// 4. Tabata Double (PRO)
+// 4. Tabata Double
 //    20s work / 10s rest x 16. Two Tabata sets back-to-back. 8:00
 // ---------------------------------------------------------------------------
 
@@ -178,7 +173,6 @@ const tabataDoubleIntervals: Interval[] = [
 
 const tabataDouble: WorkoutTemplate = {
   category: 'tabata',
-  is_free: false,
   sequence: {
     id: 'template-tabata-double',
     name: 'Tabata Double',
@@ -195,7 +189,7 @@ const tabataDouble: WorkoutTemplate = {
 };
 
 // ---------------------------------------------------------------------------
-// 5. EMOM 20-Minute (PRO)
+// 5. EMOM 20-Minute
 //    60s x 20 rounds. Blue. 20:00
 // ---------------------------------------------------------------------------
 
@@ -205,7 +199,6 @@ const emom20Intervals: Interval[] = [
 
 const emom20: WorkoutTemplate = {
   category: 'emom',
-  is_free: false,
   sequence: {
     id: 'template-emom-20',
     name: 'EMOM 20-Minute',
@@ -222,7 +215,7 @@ const emom20: WorkoutTemplate = {
 };
 
 // ---------------------------------------------------------------------------
-// 6. Circuit Training (PRO)
+// 6. Circuit Training
 //    6 exercises with 15s rest between. Repeat 3x.
 //    Squats(45s), Push-ups(30s), Lunges(45s), Rows(30s), Burpees(30s),
 //    Plank(60s). All different colors.
@@ -244,7 +237,6 @@ const circuitIntervals: Interval[] = [
 
 const circuit: WorkoutTemplate = {
   category: 'circuit',
-  is_free: false,
   sequence: {
     id: 'template-circuit',
     name: 'Circuit Training',
@@ -261,7 +253,7 @@ const circuit: WorkoutTemplate = {
 };
 
 // ---------------------------------------------------------------------------
-// 7. Powerlifting Rest (PRO)
+// 7. Powerlifting Rest
 //    5:00 rest interval, repeat 8x. Indigo. 40:00
 // ---------------------------------------------------------------------------
 
@@ -271,7 +263,6 @@ const powerliftingIntervals: Interval[] = [
 
 const powerlifting: WorkoutTemplate = {
   category: 'strength',
-  is_free: false,
   sequence: {
     id: 'template-powerlifting',
     name: 'Powerlifting Rest',
@@ -288,7 +279,7 @@ const powerlifting: WorkoutTemplate = {
 };
 
 // ---------------------------------------------------------------------------
-// 8. AMRAP 12-Minute (PRO)
+// 8. AMRAP 12-Minute
 //    Single 720s interval, infinite mode (repeat_count 0). Orange.
 // ---------------------------------------------------------------------------
 
@@ -298,7 +289,6 @@ const amrapIntervals: Interval[] = [
 
 const amrap12: WorkoutTemplate = {
   category: 'amrap',
-  is_free: false,
   sequence: {
     id: 'template-amrap-12',
     name: 'AMRAP 12-Minute',
@@ -315,7 +305,7 @@ const amrap12: WorkoutTemplate = {
 };
 
 // ---------------------------------------------------------------------------
-// 9. Mobility Flow (PRO)
+// 9. Mobility Flow
 //    5 stretches at 45s each with 30s transitions. 2 rounds.
 //    Hip Flexor(Pink), Hamstring(Green), Shoulder(Blue),
 //    Thoracic(Violet), Ankle(Teal).
@@ -335,7 +325,6 @@ const mobilityIntervals: Interval[] = [
 
 const mobilityFlow: WorkoutTemplate = {
   category: 'mobility',
-  is_free: false,
   sequence: {
     id: 'template-mobility',
     name: 'Mobility Flow',
@@ -352,7 +341,7 @@ const mobilityFlow: WorkoutTemplate = {
 };
 
 // ---------------------------------------------------------------------------
-// 10. Strength Superset (PRO)
+// 10. Strength Superset
 //     Exercise A(60s), Rest(90s), Exercise B(60s), Rest(90s). 4 rounds.
 //     Red/Slate alternating.
 // ---------------------------------------------------------------------------
@@ -366,7 +355,6 @@ const supersetIntervals: Interval[] = [
 
 const superset: WorkoutTemplate = {
   category: 'strength',
-  is_free: false,
   sequence: {
     id: 'template-superset',
     name: 'Strength Superset',
@@ -398,13 +386,6 @@ export const WORKOUT_TEMPLATES: WorkoutTemplate[] = [
   mobilityFlow,
   superset,
 ];
-
-/**
- * Set of template IDs that are available for free (no Pro purchase required).
- */
-export const FREE_TEMPLATE_IDS: Set<string> = new Set(
-  WORKOUT_TEMPLATES.filter((t) => t.is_free).map((t) => t.sequence.id),
-);
 
 /**
  * All template categories in display order for the filter pills.

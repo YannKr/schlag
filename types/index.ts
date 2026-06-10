@@ -18,4 +18,3 @@ export type {
   PauseEntry,
   WorkoutSession,
 } from './session';
-export type { ExtendedTheme, ProStatus } from './pro';

@@ -1,6 +1,6 @@
 {
   "name": "schlag",
-  "version": "0.2.1.0",
+  "version": "0.3.0.0",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -15,14 +15,17 @@
     "deploy": "npm run build:web && wrangler pages deploy dist --project-name schlag"
   },
   "dependencies": {
-    "@mediapipe/tasks-vision": "^0.10.34",
+    "@mediapipe/tasks-vision": "0.10.34",
     "@shopify/react-native-skia": "2.4.18",
     "expo": "~55.0.5",
     "expo-av": "^16.0.8",
+    "expo-document-picker": "~55.0.13",
+    "expo-file-system": "~55.0.22",
     "expo-font": "~55.0.4",
     "expo-haptics": "~55.0.8",
     "expo-keep-awake": "~55.0.4",
     "expo-linking": "~55.0.7",
+    "expo-notifications": "~55.0.23",
     "expo-router": "~55.0.4",
     "expo-speech": "~55.0.8",
     "expo-splash-screen": "~55.0.10",

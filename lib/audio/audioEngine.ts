@@ -38,6 +38,7 @@ export class AudioEngine {
   private toneGenerator: IToneGenerator;
   private speechEngine: SpeechEngine;
   private initialized = false;
+  private muted = false;
 
   constructor() {
     // Select the platform-appropriate tone generator.
@@ -99,6 +100,28 @@ export class AudioEngine {
   }
 
   // -----------------------------------------------------------------------
+  // Mute
+  // -----------------------------------------------------------------------
+
+  /**
+   * Mute or unmute all audio cues (beeps and voice). Session-transient —
+   * not persisted to settings. Muting also cuts any in-progress speech.
+   */
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (muted) {
+      this.speechEngine.stop();
+    }
+  }
+
+  /**
+   * Whether audio cues are currently muted.
+   */
+  isMuted(): boolean {
+    return this.muted;
+  }
+
+  // -----------------------------------------------------------------------
   // Tone playback (fire-and-forget)
   // -----------------------------------------------------------------------
 
@@ -106,6 +129,7 @@ export class AudioEngine {
    * Play the interval-start beep (440Hz, 80ms).
    */
   playIntervalStart(): void {
+    if (this.muted) return;
     this.toneGenerator.playTone('intervalStart').catch(this.logError('intervalStart'));
   }
 
@@ -116,6 +140,7 @@ export class AudioEngine {
    * @param voiceEnabled      Whether TTS voice countdown is active.
    */
   playCountdown(secondsRemaining: 3 | 2 | 1, voiceEnabled: boolean): void {
+    if (this.muted) return;
     const toneMap: Record<number, ToneName> = {
       3: 'countdown3',
       2: 'countdown2',
@@ -142,6 +167,7 @@ export class AudioEngine {
    * @param customUri  URI to a custom end-of-interval audio file, or null.
    */
   playIntervalEnd(customUri?: string | null): void {
+    if (this.muted) return;
     if (customUri) {
       this.playCustomAudio(customUri);
     } else {
@@ -154,6 +180,7 @@ export class AudioEngine {
    * This tone cannot be disabled per PRD requirements.
    */
   playWorkoutComplete(): void {
+    if (this.muted) return;
     this.toneGenerator
       .playTone('workoutComplete')
       .catch(this.logError('workoutComplete'));
@@ -163,6 +190,7 @@ export class AudioEngine {
    * Play the pause/resume click (1kHz, 50ms, -12dB).
    */
   playPauseClick(): void {
+    if (this.muted) return;
     this.toneGenerator.playTone('pauseClick').catch(this.logError('pauseClick'));
   }
 
@@ -170,6 +198,7 @@ export class AudioEngine {
    * v2: Play the halfway alert (330Hz, 60ms) and optionally speak "Halfway".
    */
   playHalfway(voiceEnabled: boolean): void {
+    if (this.muted) return;
     this.toneGenerator.playTone('halfway').catch(this.logError('halfway'));
     if (voiceEnabled) {
       this.speechEngine.speakHalfway();
@@ -183,6 +212,7 @@ export class AudioEngine {
    * @param voiceEnabled  Whether TTS voice is active for this sequence.
    */
   speakNextInterval(name: string, voiceEnabled: boolean): void {
+    if (this.muted) return;
     if (voiceEnabled) {
       this.speechEngine.speakNextInterval(name);
     }

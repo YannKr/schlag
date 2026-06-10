@@ -15,8 +15,7 @@ import type { Sequence } from '@/types/sequence';
 import type { AppSettings } from '@/types/settings';
 import type { TimerSession } from '@/types/timer';
 import type { WorkoutSession } from '@/types/session';
-import type { ProStatus } from '@/types/pro';
-import { DEFAULT_SETTINGS, DEFAULT_PRO_STATUS } from '@/constants/defaults';
+import { DEFAULT_SETTINGS } from '@/constants/defaults';
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -27,7 +26,6 @@ const KEYS = {
   SETTINGS: 'schlag.settings',
   TIMER_SESSION: 'schlag.timerSession',
   SESSIONS: 'schlag.sessions',
-  PRO_STATUS: 'schlag.proStatus',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -129,20 +127,6 @@ export function getSessions(): WorkoutSession[] {
 
 export function saveSessions(sessions: WorkoutSession[]): boolean {
   return setJSON(KEYS.SESSIONS, sessions);
-}
-
-// ---------------------------------------------------------------------------
-// Pro status (v2)
-// ---------------------------------------------------------------------------
-
-export function getProStatus(): ProStatus {
-  const stored = getJSON<ProStatus>(KEYS.PRO_STATUS);
-  if (stored == null) return { ...DEFAULT_PRO_STATUS };
-  return { ...DEFAULT_PRO_STATUS, ...stored };
-}
-
-export function saveProStatus(status: ProStatus): boolean {
-  return setJSON(KEYS.PRO_STATUS, status);
 }
 
 // ---------------------------------------------------------------------------

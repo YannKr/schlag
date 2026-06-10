@@ -305,6 +305,87 @@ describe('AudioEngine.stopSpeech', () => {
   });
 });
 
+describe('AudioEngine mute', () => {
+  it('starts unmuted', () => {
+    const engine = new AudioEngine();
+    expect(engine.isMuted()).toBe(false);
+  });
+
+  it('reflects setMuted in isMuted', () => {
+    const engine = new AudioEngine();
+    engine.setMuted(true);
+    expect(engine.isMuted()).toBe(true);
+    engine.setMuted(false);
+    expect(engine.isMuted()).toBe(false);
+  });
+
+  it('stops in-progress speech when muting', () => {
+    const engine = new AudioEngine();
+    engine.setMuted(true);
+    expect(mockSpeechStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('suppresses all tone cues while muted', () => {
+    const engine = new AudioEngine();
+    engine.setMuted(true);
+
+    engine.playIntervalStart();
+    engine.playCountdown(3, true);
+    engine.playIntervalEnd();
+    engine.playWorkoutComplete();
+    engine.playPauseClick();
+    engine.playHalfway(true);
+
+    expect(mockTonePlay).not.toHaveBeenCalled();
+  });
+
+  it('suppresses voice cues while muted', () => {
+    const engine = new AudioEngine();
+    engine.setMuted(true);
+
+    engine.playCountdown(2, true);
+    engine.playHalfway(true);
+    engine.speakNextInterval('Squat', true);
+
+    expect(mockSpeakCountdown).not.toHaveBeenCalled();
+    expect(mockSpeakHalfway).not.toHaveBeenCalled();
+    expect(mockSpeakNext).not.toHaveBeenCalled();
+  });
+
+  it('suppresses custom end audio while muted', async () => {
+    mockPlatformOS = 'web';
+    const playStub = jest.fn().mockResolvedValue(undefined);
+    (global as unknown as { Audio: unknown }).Audio = jest
+      .fn()
+      .mockImplementation(() => ({ play: playStub }));
+
+    const engine = new AudioEngine();
+    engine.setMuted(true);
+    engine.playIntervalEnd('https://example.com/end.mp3');
+    await flushMicrotasks();
+
+    expect(playStub).not.toHaveBeenCalled();
+    expect(mockWebPlay).not.toHaveBeenCalled();
+  });
+
+  it('restores all cues after unmuting', () => {
+    const engine = new AudioEngine();
+    engine.setMuted(true);
+    engine.playIntervalStart();
+    expect(mockTonePlay).not.toHaveBeenCalled();
+
+    engine.setMuted(false);
+    engine.playIntervalStart();
+    engine.playCountdown(1, true);
+    engine.speakNextInterval('Squat', true);
+
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart');
+    expect(mockTonePlay).toHaveBeenCalledWith('countdown1');
+    expect(mockSpeakCountdown).toHaveBeenCalledWith(1);
+    expect(mockSpeakNext).toHaveBeenCalledWith('Squat');
+  });
+});
+
 describe('AudioEngine.cleanup', () => {
   it('stops speech and cleans up the tone generator', async () => {
     const engine = new AudioEngine();

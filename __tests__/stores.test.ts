@@ -529,6 +529,20 @@ describe('SequenceStore', () => {
 
       expect(saveSequences).toHaveBeenCalled();
     });
+
+    it('sanitizes incoming entries (truncates fields, drops unknown keys)', () => {
+      const incoming = {
+        ...makeSequence({ id: 'sanitize-1', name: 'n'.repeat(100) }),
+        rogue_key: 'payload',
+      } as any;
+
+      const result = useSequenceStore.getState().importSequences([incoming]);
+
+      expect(result.added).toBe(1);
+      const imported = useSequenceStore.getState().sequences[0];
+      expect(imported.name).toHaveLength(32);
+      expect(imported).not.toHaveProperty('rogue_key');
+    });
   });
 
   describe('exportSequences', () => {
@@ -1125,6 +1139,20 @@ describe('SessionStore', () => {
       useSessionStore.getState().importSessions([incoming]);
 
       expect(saveSessions).toHaveBeenCalled();
+    });
+
+    it('sanitizes incoming entries (clamps counters, drops unknown keys)', () => {
+      const incoming = {
+        ...makeSession({ id: 'sanitize-s1', total_active_seconds: -50 }),
+        rogue_key: 'payload',
+      } as any;
+
+      const result = useSessionStore.getState().importSessions([incoming]);
+
+      expect(result.added).toBe(1);
+      const imported = useSessionStore.getState().sessions[0];
+      expect(imported.total_active_seconds).toBe(0);
+      expect(imported).not.toHaveProperty('rogue_key');
     });
 
     it('sets updated_at to the current timestamp', () => {

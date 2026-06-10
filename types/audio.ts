@@ -20,7 +20,7 @@ export interface AudioConfig {
 }
 
 /**
- * v2: Built-in tone options for per-interval audio (Schlag Pro).
+ * v2: Built-in tone options for per-interval audio.
  * 'default' uses the global setting; 'custom' uses a per-interval custom_audio_url.
  */
 export type IntervalAudioTone =

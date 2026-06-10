@@ -35,7 +35,9 @@ import Svg, { Path, Polygon, Rect } from 'react-native-svg';
 
 import { AnimatedCountdown } from '@/components/AnimatedCountdown';
 import { Glyph } from '@/components/Glyph';
+import { KeyboardShortcutOverlay } from '@/components/KeyboardShortcutOverlay';
 import { useIntensity } from '@/hooks/useIntensity';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useRepTracking } from '@/hooks/useRepTracking';
 import { CameraPreview } from '@/components/CameraPreview';
 import { RepCountDisplay } from '@/components/RepCountDisplay';
@@ -508,9 +510,9 @@ export default function WorkoutScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
 
-  useWakeLock(true);
-
   const settings = useSettingsStore((s) => s.settings);
+
+  useWakeLock(settings.keepScreenAwake);
   const getSequenceById = useSequenceStore((s) => s.getSequenceById);
   const updateSequence = useSequenceStore((s) => s.updateSequence);
   const setActive = useTimerStore((s) => s.setActive);
@@ -532,6 +534,9 @@ export default function WorkoutScreen() {
   const [showTapToContinue, setShowTapToContinue] = useState(false);
   const [getReadyRemaining, setGetReadyRemaining] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Session-transient — mute and the shortcut overlay reset every workout.
+  const [isMuted, setIsMuted] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const hasStartedRef = useRef(false);
   const sequenceRef = useRef(getSequenceById(id ?? ''));
   const sessionIdRef = useRef<string | null>(null);
@@ -639,13 +644,18 @@ export default function WorkoutScreen() {
     timerLoop.skip();
   }, [timerLoop]);
 
-  // Controls.
+  // Controls. Pause/resume guard on the actual engine status — keyboard
+  // shortcuts fire during the get-ready countdown and on the complete screen,
+  // where the engine no-ops but addPause/recordResume would still corrupt the
+  // session log (and play a stray pause click).
   const handlePause = useCallback(() => {
+    if (tickDataRef.current?.status !== 'running') return;
     timerLoop.pause();
     if (sessionIdRef.current) addPause(sessionIdRef.current);
   }, [timerLoop, addPause]);
 
   const handleResume = useCallback(() => {
+    if (tickDataRef.current?.status !== 'paused') return;
     timerLoop.resume();
     if (sessionIdRef.current) recordResume(sessionIdRef.current);
   }, [timerLoop, recordResume]);
@@ -696,6 +706,22 @@ export default function WorkoutScreen() {
     toggleExpanded();
   }, [toggleExpanded]);
 
+  const handleToggleMute = useCallback(() => {
+    setIsMuted((prev) => {
+      const next = !prev;
+      timerLoop.setMuted(next);
+      return next;
+    });
+  }, [timerLoop]);
+
+  const handleToggleShortcuts = useCallback(() => {
+    setShowShortcuts((prev) => !prev);
+  }, []);
+
+  const handleCloseShortcuts = useCallback(() => {
+    setShowShortcuts(false);
+  }, []);
+
   const handleDone = useCallback(() => {
     const td = tickDataRef.current;
     if (sessionIdRef.current && td) {
@@ -714,6 +740,21 @@ export default function WorkoutScreen() {
     setInactive();
     router.back();
   }, [timerLoop, setInactive, router, completeSession]);
+
+  // Web keyboard shortcuts (no-op on native). Must run before early returns.
+  const isPaused = tickData?.status === 'paused';
+  useKeyboardShortcuts({
+    onPause: handlePause,
+    onResume: handleResume,
+    onSkip: handleSkip,
+    onStop: handleStop,
+    onToggleExpanded: handleToggleExpanded,
+    onToggleMute: handleToggleMute,
+    onShowShortcuts: handleToggleShortcuts,
+    onHideShortcuts: handleCloseShortcuts,
+    isPaused,
+    isOverlayVisible: showShortcuts,
+  });
 
   // Full-bleed interval color — Signal drops the old theme options.
   const intervalHex = normalizeIntervalHex(
@@ -840,7 +881,6 @@ export default function WorkoutScreen() {
   } = tickData;
 
   const isRunningOrPaused = status === 'running' || status === 'paused';
-  const isPaused = status === 'paused';
   const isInfinite = totalRounds === 0;
   const intervalNameBig = isRestBetweenSets
     ? 'REST'
@@ -967,6 +1007,11 @@ export default function WorkoutScreen() {
             <Text style={[styles.progressMetaText, { color: mutedOnColor }]}>
               {formatDuration(elapsedSec)}
             </Text>
+            {isMuted && (
+              <Text style={[styles.mutedIndicator, { color: mutedOnColor }]}>
+                MUTED
+              </Text>
+            )}
             <Text style={[styles.progressMetaText, { color: mutedOnColor }]}>
               −{formatDuration(remainingSec)}
             </Text>
@@ -1033,6 +1078,11 @@ export default function WorkoutScreen() {
       </View>
 
       {showTapToContinue && <TapToContinueOverlay onTap={handleTapToContinue} />}
+
+      <KeyboardShortcutOverlay
+        visible={showShortcuts}
+        onClose={handleCloseShortcuts}
+      />
     </View>
   );
 }
@@ -1053,6 +1103,7 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: SPACING.md,
     gap: SPACING.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerLeft: {
     flex: 1,
@@ -1132,6 +1183,13 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.mono,
     fontSize: FONT_SIZE.eyebrow + 1,
     letterSpacing: 0.5,
+    opacity: 0.85,
+  },
+  mutedIndicator: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: FONT_SIZE.eyebrow,
+    fontWeight: FONT_WEIGHT.medium,
+    letterSpacing: LETTER_SPACING.eyebrow,
     opacity: 0.85,
   },
 

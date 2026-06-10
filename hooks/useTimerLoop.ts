@@ -21,6 +21,12 @@ import { AppState, AppStateStatus, Platform } from 'react-native';
 import type { Sequence, TimerTickData, ToneName } from '@/types';
 import { TimerEngine } from '@/lib/timer/timerEngine';
 import { AudioEngine } from '@/lib/audio/audioEngine';
+import { computeUpcomingBoundaries } from '@/lib/timer/timerCalculations';
+import {
+  requestNotificationPermission,
+  scheduleIntervalNotifications,
+  cancelScheduledNotifications,
+} from '@/lib/notifications';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
   saveTimerSession,
@@ -70,6 +76,9 @@ export interface UseTimerLoopReturn {
 
   /** In infinite mode, finish after the current round. */
   finishAfterRound: () => void;
+
+  /** Mute or unmute all audio cues (session-transient, not persisted). */
+  setMuted: (muted: boolean) => void;
 
   /** Whether the timer is actively running or paused. */
   isActive: boolean;
@@ -225,6 +234,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
     if (data.status === 'completed') {
       stopLoop();
       clearTimerSession();
+      cancelScheduledNotifications();
     }
   }, [dispatchAudioCues]);
 
@@ -280,6 +290,12 @@ export function useTimerLoop(): UseTimerLoopReturn {
         audio.unlockWebAudio();
       }
 
+      // Lazily request notification permission on native (non-blocking —
+      // if denied, background notifications are skipped but everything
+      // else works). Also clear any stale scheduled notifications.
+      requestNotificationPermission();
+      cancelScheduledNotifications();
+
       sequenceRef.current = sequence;
       engine.startWorkout(sequence);
 
@@ -319,8 +335,22 @@ export function useTimerLoop(): UseTimerLoopReturn {
         audio.unlockWebAudio();
       }
 
+      // Back in the foreground — in-app cues take over from any
+      // notifications scheduled before the process was killed.
+      requestNotificationPermission();
+      cancelScheduledNotifications();
+
       sequenceRef.current = sequence;
       engine.restoreSession(saved, sequence);
+
+      // The engine rejects sessions whose interval index is out of range
+      // for this sequence (e.g. the sequence was edited after the process
+      // was killed) — fall back to a fresh start.
+      if (!engine.isActive()) {
+        clearTimerSession();
+        sequenceRef.current = null;
+        return false;
+      }
 
       startLoop();
       return true;
@@ -332,6 +362,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
     const engine = engineRef.current;
     engine.pause();
     audioRef.current.playPauseClick();
+    cancelScheduledNotifications();
 
     // Perform one final tick to update UI to paused state.
     performTick();
@@ -359,6 +390,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
     engineRef.current.stop();
     audioRef.current.stopSpeech();
     clearTimerSession();
+    cancelScheduledNotifications();
     sequenceRef.current = null;
     setTickData(null);
     setIsActive(false);
@@ -366,6 +398,10 @@ export function useTimerLoop(): UseTimerLoopReturn {
 
   const finishAfterRound = useCallback(() => {
     engineRef.current.requestFinishAfterRound();
+  }, []);
+
+  const setMuted = useCallback((muted: boolean) => {
+    audioRef.current.setMuted(muted);
   }, []);
 
   // -----------------------------------------------------------------------
@@ -383,14 +419,36 @@ export function useTimerLoop(): UseTimerLoopReturn {
           saveTimerSession(session);
         }
 
-        // On native, keep the interval running so audio cues continue
-        // firing in the background (foreground service handles this).
+        // Native: JS audio cues cannot fire while backgrounded in a
+        // managed app, so schedule OS-level local notifications at each
+        // upcoming interval boundary instead. Idempotent across repeated
+        // inactive/background transitions (schedule replaces schedule).
+        // When the user has muted in-app audio, notifications are
+        // scheduled silently (banner only, no sound).
+        if (Platform.OS !== 'web') {
+          const state = engine.getState();
+          const sequence = engine.getSequence();
+          if (state?.status === 'running' && sequence) {
+            try {
+              scheduleIntervalNotifications(
+                computeUpcomingBoundaries(sequence, state),
+                audioRef.current.isMuted(),
+              );
+            } catch {
+              // Never let boundary math crash the AppState listener —
+              // background notifications are best-effort.
+            }
+          }
+        }
+
         // On web, the browser may throttle timers but the absolute-time
         // approach ensures correct display when the tab re-focuses.
       }
 
       if (nextAppState === 'active') {
-        // Coming back to foreground.
+        // Coming back to foreground — in-app cues take over again.
+        cancelScheduledNotifications();
+
         if (engine.isActive()) {
           // The absolute-time approach means tick() will automatically
           // compute the correct remaining time — no adjustment needed.
@@ -419,6 +477,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
   useEffect(() => {
     return () => {
       stopLoop();
+      cancelScheduledNotifications();
       audioRef.current.cleanup().catch(() => {});
     };
   }, [stopLoop]);
@@ -436,6 +495,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
     skip,
     stop,
     finishAfterRound,
+    setMuted,
     isActive,
   };
 }

@@ -2,7 +2,7 @@
  * Settings Screen for Schlag.
  *
  * Displays all user-configurable preferences organized into sections:
- * Audio, Display, Sequences, History, Pro, and Account. Settings are
+ * Audio, Display, Sequences, History, and Account. Settings are
  * persisted via the settingsStore (MMKV).
  */
 
@@ -19,20 +19,27 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import * as Speech from 'expo-speech';
 
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useSequenceStore } from '@/stores/sequenceStore';
 import { useSessionStore } from '@/stores/sessionStore';
-import { useProStore } from '@/stores/proStore';
 import { getStorageUsageBytes } from '@/lib/storage';
 import { APP_COLORS } from '@/constants/colors';
+import {
+  IMPORT_FILE_MAX_SIZE_BYTES,
+  IMPORT_FILE_TOO_LARGE_MESSAGE,
+  IMPORT_MAX_SEQUENCES_PER_FILE,
+  IMPORT_MAX_SESSIONS_PER_FILE,
+} from '@/constants/validation';
 import { FONT_SIZE, FONT_WEIGHT } from '@/constants/typography';
 import { LAYOUT, SPACING } from '@/constants/layout';
 import { Button } from '@/components/Button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { VoicePicker } from '@/components/VoicePicker';
-import type { WorkoutTheme } from '@/types';
+import type { Sequence, WorkoutSession, WorkoutTheme } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Reusable row components
@@ -282,6 +289,103 @@ function VolumeRow({
 }
 
 // ---------------------------------------------------------------------------
+// Import helpers (shared by sequence and history import)
+// ---------------------------------------------------------------------------
+
+/**
+ * Native: open the system document picker, enforce the size limit, read the
+ * file, and return the parsed JSON array. Returns null when the user cancels
+ * or the file is rejected (an alert is shown for rejections). Throws on
+ * read/parse errors so callers can show their own context-specific alert.
+ */
+async function pickJsonArrayNative(): Promise<unknown[] | null> {
+  const result = await DocumentPicker.getDocumentAsync({
+    type: 'application/json',
+    copyToCacheDirectory: true,
+  });
+  if (result.canceled || !result.assets?.[0]) return null;
+
+  const asset = result.assets[0];
+  const file = new File(asset.uri);
+  try {
+    // Enforce the size limit BEFORE reading the file into memory. When the
+    // picker does not report a size (some Android SAF providers), stat the
+    // cached copy on disk instead of materializing it into JS first.
+    let size: number | null | undefined = asset.size;
+    if (size == null) {
+      try {
+        size = file.size;
+      } catch {
+        size = null;
+      }
+    }
+    if (size == null) {
+      Alert.alert('Import Failed', 'Could not determine the file size.');
+      return null;
+    }
+    if (size > IMPORT_FILE_MAX_SIZE_BYTES) {
+      Alert.alert('Import Failed', IMPORT_FILE_TOO_LARGE_MESSAGE);
+      return null;
+    }
+
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!Array.isArray(data)) {
+      Alert.alert('Import Failed', 'File does not contain a valid JSON array.');
+      return null;
+    }
+    return data;
+  } finally {
+    // The picker copied the file into the app cache; don't leak it.
+    try {
+      file.delete();
+    } catch {
+      // Best-effort cleanup — the OS clears the cache directory eventually.
+    }
+  }
+}
+
+/**
+ * Web: open a file input, enforce the size limit, read the file, and return
+ * the parsed JSON array. Resolves null when the user cancels or the file is
+ * rejected (an alert is shown for rejections, using `noun` in the message).
+ * Rejects on read/parse errors so callers can show their own alert.
+ */
+function pickJsonArrayWeb(noun: string): Promise<unknown[] | null> {
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.oncancel = () => resolve(null);
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) {
+        resolve(null);
+        return;
+      }
+      if (file.size > IMPORT_FILE_MAX_SIZE_BYTES) {
+        Alert.alert('Import Failed', IMPORT_FILE_TOO_LARGE_MESSAGE);
+        resolve(null);
+        return;
+      }
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (!Array.isArray(data)) {
+          Alert.alert('Import Failed', `File does not contain a valid ${noun} array.`);
+          resolve(null);
+          return;
+        }
+        resolve(data);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    input.click();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Settings Screen
 // ---------------------------------------------------------------------------
 
@@ -300,11 +404,6 @@ export default function SettingsScreen() {
   const sessions = useSessionStore((s) => s.sessions);
   const getActiveSessions = useSessionStore((s) => s.getActiveSessions);
   const importSessions = useSessionStore((s) => s.importSessions);
-
-  // Pro store (v2)
-  const proStatus = useProStore((s) => s.proStatus);
-  const isPro = useProStore((s) => s.isPro);
-  const togglePro = useProStore((s) => s.togglePro);
 
   // Local state for loading indicators and dialogs
   const [isExporting, setIsExporting] = useState(false);
@@ -455,12 +554,26 @@ export default function SettingsScreen() {
   }, [exportSequences]);
 
   const handleImport = useCallback(() => {
-    // expo-document-picker is not installed yet. Show placeholder.
-    Alert.alert(
-      'Import Sequences',
-      'Document picker is not yet available. Install expo-document-picker to enable JSON import.',
-    );
-  }, []);
+    void (async () => {
+      try {
+        const data =
+          Platform.OS === 'web'
+            ? await pickJsonArrayWeb('sequence')
+            : await pickJsonArrayNative();
+        if (!data) return;
+        // Cap entries per file before any heavy per-entry sanitizing.
+        const entries = data.slice(0, IMPORT_MAX_SEQUENCES_PER_FILE);
+        const dropped = data.length - entries.length;
+        const result = importSequences(entries as Sequence[]);
+        Alert.alert(
+          'Import Complete',
+          `Imported ${result.added} sequences (${result.skipped + dropped} skipped)`,
+        );
+      } catch (error) {
+        Alert.alert('Import Failed', 'An error occurred while importing sequences.');
+      }
+    })();
+  }, [importSequences]);
 
   // -----------------------------------------------------------------------
   // History handlers (v2)
@@ -493,36 +606,25 @@ export default function SettingsScreen() {
   }, [getActiveSessions]);
 
   const handleImportHistory = useCallback(() => {
-    if (Platform.OS === 'web') {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.json';
-      input.onchange = async (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (!file) return;
-        try {
-          const text = await file.text();
-          const data = JSON.parse(text);
-          if (!Array.isArray(data)) {
-            Alert.alert('Import Failed', 'File does not contain a valid session array.');
-            return;
-          }
-          const result = importSessions(data);
-          Alert.alert(
-            'Import Complete',
-            `Imported ${result.added} sessions (${result.skipped} skipped)`,
-          );
-        } catch (error) {
-          Alert.alert('Import Failed', 'An error occurred while importing history.');
-        }
-      };
-      input.click();
-    } else {
-      Alert.alert(
-        'Import History',
-        'Document picker is not yet available. Install expo-document-picker to enable JSON import.',
-      );
-    }
+    void (async () => {
+      try {
+        const data =
+          Platform.OS === 'web'
+            ? await pickJsonArrayWeb('session')
+            : await pickJsonArrayNative();
+        if (!data) return;
+        // Cap entries per file before any heavy per-entry sanitizing.
+        const entries = data.slice(0, IMPORT_MAX_SESSIONS_PER_FILE);
+        const dropped = data.length - entries.length;
+        const result = importSessions(entries as WorkoutSession[]);
+        Alert.alert(
+          'Import Complete',
+          `Imported ${result.added} sessions (${result.skipped + dropped} skipped)`,
+        );
+      } catch (error) {
+        Alert.alert('Import Failed', 'An error occurred while importing history.');
+      }
+    })();
   }, [importSessions]);
 
   const handleClearHistory = useCallback(() => {
@@ -543,22 +645,6 @@ export default function SettingsScreen() {
   const handleCancelClearHistory = useCallback(() => {
     setClearHistoryVisible(false);
   }, []);
-
-  // -----------------------------------------------------------------------
-  // Pro handlers (v2)
-  // -----------------------------------------------------------------------
-
-  const handleRestorePurchase = useCallback(() => {
-    // Placeholder -- actual restore requires StoreKit / Google Play integration.
-    Alert.alert(
-      'Restore Purchase',
-      'Purchase restoration is not yet available. Use the dev toggle below for testing.',
-    );
-  }, []);
-
-  const handleTogglePro = useCallback(() => {
-    togglePro();
-  }, [togglePro]);
 
   // -----------------------------------------------------------------------
   // Render
@@ -741,32 +827,6 @@ export default function SettingsScreen() {
         />
       </View>
 
-      {/* ================================================================= */}
-      {/* PRO (v2)                                                         */}
-      {/* ================================================================= */}
-      <SectionHeader title="PRO" />
-      <View style={styles.section}>
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>
-            {isPro() ? 'Schlag Pro' : 'Unlock Schlag Pro'}
-          </Text>
-          <Text style={styles.proStatusIcon}>
-            {isPro() ? '\u2713' : '\uD83D\uDD12'}
-          </Text>
-        </View>
-        <Divider />
-        <ActionRow
-          label="Restore purchase"
-          onPress={handleRestorePurchase}
-        />
-        <Divider />
-        <ActionRow
-          label="Toggle Pro (Dev)"
-          value={isPro() ? 'ON' : 'OFF'}
-          onPress={handleTogglePro}
-        />
-      </View>
-
       {/* Bottom spacing */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>Schlag v1.0</Text>
@@ -945,13 +1005,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZE.caption,
     color: APP_COLORS.textMuted,
     fontStyle: 'italic',
-  },
-
-  // Pro status icon
-  proStatusIcon: {
-    fontSize: FONT_SIZE.bodyLarge,
-    color: APP_COLORS.primary,
-    marginLeft: SPACING.sm,
   },
 
   // Footer

@@ -83,9 +83,8 @@ Voice countdown (TTS via expo-speech in v1): announces "3... 2... 1..." and "Nex
 - No auth or cloud sync in v1 — app is fully local-only
 - Cloud sync deferred to v2 (iCloud for iOS, Google Drive for Android, self-hosted SQLite for web)
 - Custom audio upload deferred to v2
-- No workout history/session logging in v1
 - No sharing, social features, wearable integration, or localization in v1
-- Sequence export/import as JSON; import merges (adds new, never overwrites)
+- Sequence and workout-history export/import as JSON on all platforms; imports merge (add new, never overwrite) and run through strict sanitization (`lib/importValidation.ts`)
 
 ## Sequence Builder UX Notes
 
