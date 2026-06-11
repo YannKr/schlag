@@ -2,12 +2,6 @@
 
 ## Testing
 
-### Repair the Playwright e2e suite (stale Signal-migration locators)
-**Priority:** P0
-**What:** 12 of 26 e2e tests fail identically on main and feature branches — locators predate the Signal design migration (e.g. `smoke.spec.ts` expects visible text "Schlag" that the header no longer renders; get-ready, theme, timer, and storage-resilience specs fail the same way).
-**Why:** The e2e suite is currently useless as a regression net; every ship has to manually prove failures are pre-existing.
-**Added:** 2026-06-10 via /ship triage
-
 ### E2E coverage for v0.3.0.0 features
 **Priority:** P1
 **What:** Playwright specs for: settings JSON import flow (oversized file → limit alert, non-array JSON → error alert), workout-screen E/M/? wiring + MUTED indicator + overlay render, un-gated templates smoke pass, and an offline test (build production, `context.setOffline(true)`, reload, assert app shell renders — covers `public/sw.js` strategies that jsdom can't).
@@ -74,6 +68,9 @@
 **Added:** 2026-06-10 via /ship
 
 ## Completed
+
+### Repair the Playwright e2e suite (stale Signal-migration locators)
+**Completed:** v0.3.1.0 (2026-06-10) — 12 failing tests root-caused to Signal-migration locator drift; all test-only fixes, no app bugs found. Locators deduped into e2e/helpers.ts; review pass also fixed four pre-existing vacuous assertions. Suite now 72/72 across chromium/firefox/webkit (three dead per-theme tests collapsed into one that exercises the theme picker, per the open "Workout theme" TODO).
 
 ### Reduce Motion Accessibility Setting
 **Completed:** feature/todo-batch (2026-04-02)

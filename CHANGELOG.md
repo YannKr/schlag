@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1.0] - 2026-06-10
+
+### Fixed
+- **The end-to-end test suite works again** — 12 of 26 tests had been failing since the Signal design migration because they looked for UI that no longer exists (e.g. a "Schlag" header text the empty library never renders). All locators now match the real screens, shared between specs via a new `e2e/helpers.ts` so the next copy tweak is a one-file fix. Suite: 72/72 passing across Chromium, Firefox, and WebKit.
+- Several tests that could pass while the feature was broken were strengthened: the timer-precision test now fails on a frozen timer, the storage-quota test actually listens for errors before triggering them, stopping a workout is asserted end-to-end (confirm dialog → back at library), and the get-ready screen assertions can no longer be satisfied by the library screen mounted underneath.
+- Three obsolete per-theme workout rendering tests (the workout screen no longer reads the theme setting) were collapsed into one honest test that exercises the still-shipping theme picker in Settings.
+
 ## [0.3.0.0] - 2026-06-10
 
 ### Added
