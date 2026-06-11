@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+import { createSequenceButton } from './helpers';
+
 test.describe('HTML validity: no nested buttons', () => {
   test('library page has no <button> inside <button>', async ({ page }) => {
     await page.goto('/');
@@ -27,8 +29,7 @@ test.describe('HTML validity: no nested buttons', () => {
     await page.waitForLoadState('networkidle');
 
     // Create a new sequence to get to the builder
-    const fab = page.getByRole('button', { name: 'Create new sequence' });
-    await fab.click();
+    await createSequenceButton(page).click();
     await page.waitForURL(/\/builder\//);
     await page.waitForLoadState('networkidle');
 
