@@ -19,7 +19,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 
-import { useSessionStore } from '@/stores/sessionStore';
+import { useSessionStore, toDateKey } from '@/stores/sessionStore';
 import { SIGNAL } from '@/constants/colors';
 import {
   FONT_FAMILY,
@@ -63,20 +63,25 @@ function formatShortDate(iso: string): string {
   return `${months[d.getMonth()]} ${d.getDate()}`;
 }
 
-function getDateGroup(dateKey: string): string {
+/** Exported for unit tests — the timezone handling here is easy to regress. */
+export function getDateGroup(dateKey: string): string {
+  // The session keys come from toDateKey(), which uses local date parts.
+  // These must be built the same way: toISOString() on a local midnight
+  // returns the previous day for anyone east of UTC, which put every
+  // session in the wrong group.
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const todayKey = today.toISOString().substring(0, 10);
+  const todayKey = toDateKey(today);
 
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayKey = yesterday.toISOString().substring(0, 10);
+  const yesterdayKey = toDateKey(yesterday);
 
   const weekStart = new Date(today);
   const day = weekStart.getDay();
   const diff = day === 0 ? 6 : day - 1;
   weekStart.setDate(weekStart.getDate() - diff);
-  const weekStartKey = weekStart.toISOString().substring(0, 10);
+  const weekStartKey = toDateKey(weekStart);
 
   if (dateKey === todayKey) return 'Today';
   if (dateKey === yesterdayKey) return 'Yesterday';
@@ -286,6 +291,8 @@ const SessionRow = React.memo<SessionRowProps>(({ session, index, onLongPress })
   );
 });
 
+SessionRow.displayName = 'SessionRow';
+
 // ---------------------------------------------------------------------------
 // Empty state
 // ---------------------------------------------------------------------------
@@ -296,7 +303,7 @@ function EmptyState() {
       <Text style={styles.emptyIcon}>∅</Text>
       <Text style={styles.emptyTitle}>No sessions yet</Text>
       <Text style={styles.emptySubtitle}>
-        Finish a workout and it'll log here.
+        Finish a workout and it&apos;ll log here.
       </Text>
     </View>
   );

@@ -100,6 +100,11 @@ export function useTimerLoop(): UseTimerLoopReturn {
   const isRunningRef = useRef(false);
   const sequenceRef = useRef<Sequence | null>(null);
 
+  // Name spoken by the most recent end cue. Held across ticks so the start
+  // cue for the same interval, which can arrive on the next tick, does not
+  // announce it a second time.
+  const announcedByEndRef = useRef<string | null>(null);
+
   // -----------------------------------------------------------------------
   // State — drives UI re-renders.
   // -----------------------------------------------------------------------
@@ -107,8 +112,9 @@ export function useTimerLoop(): UseTimerLoopReturn {
   const [tickData, setTickData] = useState<TimerTickData | null>(null);
   const [isActive, setIsActive] = useState(false);
 
-  // Global voice countdown setting (overrides per-sequence config when off).
+  // Global audio settings (each overrides the per-sequence config when off).
   const globalVoiceEnabled = useSettingsStore((s) => s.settings.voiceCountdownEnabled);
+  const globalBeepsEnabled = useSettingsStore((s) => s.settings.beepsEnabled);
 
   // -----------------------------------------------------------------------
   // Audio cue dispatcher
@@ -122,7 +128,9 @@ export function useTimerLoop(): UseTimerLoopReturn {
       // Voice is only enabled if BOTH the global setting AND the per-sequence
       // setting are true. The global toggle in Settings is the master switch.
       const voiceEnabled = globalVoiceEnabled && sequence.audio_config.use_voice_countdown;
-      const beepsEnabled = sequence.audio_config.use_builtin_beeps;
+      // Same rule for beeps: the "Interval beeps" toggle in Settings is the
+      // master switch over the per-sequence setting.
+      const beepsEnabled = globalBeepsEnabled && sequence.audio_config.use_builtin_beeps;
 
       for (const cue of cues) {
         switch (cue) {
@@ -169,7 +177,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
         }
       }
     },
-    [globalVoiceEnabled],
+    [globalVoiceEnabled, globalBeepsEnabled],
   );
 
   // -----------------------------------------------------------------------
@@ -186,38 +194,52 @@ export function useTimerLoop(): UseTimerLoopReturn {
       return;
     }
 
-    // Check for audio cues to fire.
-    if (data.status === 'running') {
+    // Check for audio cues to fire. 'completed' is included because the
+    // completion flourish is emitted by the same tick that ends the workout.
+    if (data.status === 'running' || data.status === 'completed') {
       const cues = engine.getAudioCuesToFire(data.remainingMs);
+      // Describes the interval that ended, which the engine may already have
+      // advanced past — data.isRestBetweenSets refers to the new one.
+      const endContext = engine.consumeEndCueContext();
+
       if (cues.length > 0) {
-        // During rest, suppress the intervalEnd double-beep (the voice
-        // announcement still fires below). This prevents a burst of
+        // When a rest period ends, suppress the intervalEnd double-beep (the
+        // voice announcement still fires below). This prevents a burst of
         // beeps at the rest-to-work transition.
-        if (data.isRestBetweenSets) {
-          const filtered = cues.filter((c) => c !== 'intervalEnd');
-          if (filtered.length > 0) {
-            dispatchAudioCues(filtered, sequenceRef.current);
-          }
-        } else {
-          dispatchAudioCues(cues, sequenceRef.current);
+        const toPlay = endContext?.endedDuringRest
+          ? cues.filter((c) => c !== 'intervalEnd')
+          : cues;
+        if (toPlay.length > 0) {
+          dispatchAudioCues(toPlay, sequenceRef.current);
         }
       }
 
       // Speak next interval name when the interval-end cue fires.
-      if (cues.includes('intervalEnd') && data.nextInterval) {
+      if (endContext?.nextIntervalName) {
         const seq = sequenceRef.current;
         if (globalVoiceEnabled && seq?.audio_config.use_voice_countdown) {
           audioRef.current.speakNextInterval(
-            data.nextInterval.name,
+            endContext.nextIntervalName,
             true,
           );
+          announcedByEndRef.current = endContext.nextIntervalName;
         }
       }
 
-      // v2: Announce current interval name at the start.
+      // v2: Announce current interval name at the start. The end cue names
+      // the interval that is starting, so this must not say it again. The
+      // two can land on the same tick (the engine advanced first) or on
+      // consecutive ticks (the end cue pre-fired while the old interval was
+      // still counting down), which is why the check spans ticks. The ref is
+      // cleared straight after, so it only ever suppresses the one
+      // announcement that follows its own end cue.
       if (cues.includes('intervalStart')) {
+        const alreadyAnnounced =
+          data.currentInterval.name === announcedByEndRef.current;
+        announcedByEndRef.current = null;
+
         const seq = sequenceRef.current;
-        if (globalVoiceEnabled && seq?.audio_config.announce_interval_names && seq.audio_config.use_voice_countdown) {
+        if (!alreadyAnnounced && globalVoiceEnabled && seq?.audio_config.announce_interval_names && seq.audio_config.use_voice_countdown) {
           audioRef.current.speakNextInterval(
             data.currentInterval.name,
             true,
@@ -297,6 +319,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
       cancelScheduledNotifications();
 
       sequenceRef.current = sequence;
+      announcedByEndRef.current = null;
       engine.startWorkout(sequence);
 
       startLoop();
@@ -341,6 +364,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
       cancelScheduledNotifications();
 
       sequenceRef.current = sequence;
+      announcedByEndRef.current = null;
       engine.restoreSession(saved, sequence);
 
       // The engine rejects sessions whose interval index is out of range

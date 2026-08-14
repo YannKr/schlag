@@ -112,8 +112,14 @@ function now(): string {
   return new Date().toISOString();
 }
 
-/** Extract YYYY-MM-DD using local date components (not UTC). */
-function toDateKey(date: Date): string {
+/**
+ * Extract YYYY-MM-DD using local date components (not UTC).
+ *
+ * Exported so every screen that groups sessions by day uses this one
+ * definition. `toISOString().substring(0, 10)` looks equivalent but shifts
+ * the key by a day for anyone east of UTC.
+ */
+export function toDateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 

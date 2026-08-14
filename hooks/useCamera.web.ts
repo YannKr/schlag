@@ -15,6 +15,41 @@ const WASM_URL =
 const MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
+/**
+ * SHA-384 of pose_landmarker_lite.task (float16, revision 1), in the same
+ * format as an HTML `integrity` attribute.
+ *
+ * The model is 5.7MB of untrusted bytes from a public bucket, fed straight to
+ * a WASM interpreter. MediaPipe fetches it internally when given
+ * modelAssetPath, which leaves no place to attach an integrity attribute, so
+ * the download is done here and checked before it is handed over. The URL is
+ * revision-pinned, so this digest is stable.
+ */
+const MODEL_SRI =
+  'sha384-3Wk9dvRYo36b3Nc9xVjKamb4wCKt9FwiPjcHKfrvyJL/jXoGs+uRLnii6yjWLKul';
+
+/**
+ * Download the pose model and reject it unless it hashes to MODEL_SRI.
+ */
+async function fetchVerifiedModel(): Promise<Uint8Array> {
+  const response = await fetch(MODEL_URL);
+  if (!response.ok) {
+    throw new Error(`Model download failed with status ${response.status}`);
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const digest = await crypto.subtle.digest('SHA-384', bytes);
+  const actual = `sha384-${btoa(
+    String.fromCharCode(...new Uint8Array(digest)),
+  )}`;
+
+  if (actual !== MODEL_SRI) {
+    throw new Error('Model integrity check failed.');
+  }
+
+  return bytes;
+}
+
 export interface UseCameraWebOptions {
   enabled: boolean;
   processing: boolean;
@@ -49,10 +84,13 @@ export function useCameraWeb({
   const initLandmarker = useCallback(async () => {
     try {
       const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+      const model = await fetchVerifiedModel();
       try {
         // Try GPU first
         const landmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+          // A fresh copy per attempt — MediaPipe may take ownership of the
+          // buffer it is given, and the CPU fallback needs its own.
+          baseOptions: { modelAssetBuffer: model.slice(), delegate: 'GPU' },
           runningMode: 'VIDEO',
           numPoses: 1,
         });
@@ -61,7 +99,7 @@ export function useCameraWeb({
       } catch {
         // Fallback to CPU
         const landmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_URL, delegate: 'CPU' },
+          baseOptions: { modelAssetBuffer: model.slice(), delegate: 'CPU' },
           runningMode: 'VIDEO',
           numPoses: 1,
         });

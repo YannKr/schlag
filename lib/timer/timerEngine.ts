@@ -51,6 +51,23 @@ const COUNTDOWN_WINDOW_MS = 500;
 // Helpers
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+/**
+ * What the caller needs to know about the interval boundary that just fired
+ * an end cue. Both values describe the interval that ENDED, which the engine
+ * may already have advanced past by the time the caller reads them.
+ */
+export interface EndCueContext {
+  /** Name of the interval that starts next, or null at the end of a workout. */
+  nextIntervalName: string | null;
+
+  /** True when the interval that ended was an auto-inserted rest period. */
+  endedDuringRest: boolean;
+}
+
 /**
  * Build a rest interval for between-sets periods.
  */
@@ -74,6 +91,14 @@ export class TimerEngine {
   private timeline: TimelineEntry[] = [];
   private firedCues: Set<string> = new Set();
 
+  /** End-of-interval cues queued by a boundary crossing inside tick().
+   *  Drained by the next getAudioCuesToFire() call. */
+  private pendingCues: ToneName[] = [];
+
+  /** Context of the queued end cue, captured before the engine advances so
+   *  the caller reads the right values however late it looks. */
+  private pendingEndContext: EndCueContext | null = null;
+
   // -----------------------------------------------------------------------
   // Lifecycle
   // -----------------------------------------------------------------------
@@ -90,6 +115,8 @@ export class TimerEngine {
     this.sequence = sequence;
     this.timeline = flattenSequenceToTimeline(sequence);
     this.firedCues.clear();
+    this.pendingCues = [];
+    this.pendingEndContext = null;
 
     this.state = {
       status: 'running',
@@ -142,7 +169,21 @@ export class TimerEngine {
     if (!this.state || !this.sequence) return;
     if (this.state.status !== 'running' && this.state.status !== 'paused') return;
 
+    const wasPaused = this.state.status === 'paused';
+
     this.advanceToNext();
+
+    // advanceToNext() always sets 'running'. Skipping while paused used to
+    // resume the workout with no sign of it: the screen still read Paused
+    // and the session log still held an open pause entry that never got a
+    // resumed_at. Stay paused at the start of the new interval instead.
+    if (wasPaused && this.state.status === 'running') {
+      this.state = {
+        ...this.state,
+        status: 'paused',
+        pausedAt: Date.now(),
+      };
+    }
   }
 
   /**
@@ -154,6 +195,8 @@ export class TimerEngine {
     this.sequence = null;
     this.timeline = [];
     this.firedCues.clear();
+    this.pendingCues = [];
+    this.pendingEndContext = null;
   }
 
   /**
@@ -211,6 +254,16 @@ export class TimerEngine {
     let safetyCounter = 0;
     const MAX_ITERATIONS = 10000;
 
+    // End cue for the boundary this tick crosses. Held aside until the loop
+    // finishes: a long background gap fast-forwards through many intervals,
+    // and only a genuine single crossing should beep.
+    const crossingCues: ToneName[] = [];
+
+    // emitEndCue() also writes pendingEndContext, and it does that on the
+    // first iteration whether or not the cue survives. Keep the value from
+    // before the loop so a dropped cue can take its context with it.
+    const contextBeforeLoop = this.pendingEndContext;
+
     while (
       remainingMs <= 0 &&
       this.state.status === 'running' &&
@@ -219,6 +272,13 @@ export class TimerEngine {
       safetyCounter < MAX_ITERATIONS
     ) {
       safetyCounter++;
+
+      // Edge-triggered end cue: emitted at the instant the boundary is
+      // crossed, before the engine advances. A time-window test would be
+      // stepped over by the 100ms native tick roughly half the time.
+      if (safetyCounter === 1) {
+        this.emitEndCue(crossingCues);
+      }
 
       // Anchor the next interval at the current interval's mathematical
       // end time (not Date.now()), so that after a long background gap
@@ -238,15 +298,36 @@ export class TimerEngine {
       );
     }
 
+    // The interval the loop landed on has itself already run out: either the
+    // workout finished during the gap, or auto-advance is off and the timer
+    // freezes at 0. Either way this is one more boundary on the same tick.
+    const endsHereToo = remainingMs <= 0 && this.state.status === 'running';
+
+    // Exactly one boundary crossed — deliver its end cue. More than one means
+    // the app was away and intervals elapsed unheard; a burst of beeps on
+    // return would be noise, so those cues are dropped. The cue emitted below
+    // counts towards that total, and supersedes the loop's.
+    if (safetyCounter === 1 && !endsHereToo) {
+      this.pendingCues.push(...crossingCues);
+    } else if (safetyCounter >= 1) {
+      // The context has to go with the dropped cue. It names the interval
+      // that followed the FIRST boundary of the gap — an interval that has
+      // itself already finished — and leaving it behind makes the caller
+      // announce a name several boundaries out of date.
+      this.pendingEndContext = contextBeforeLoop;
+    }
+
     // After the loop, handle remaining edge cases.
-    if (remainingMs <= 0 && this.state.status === 'running') {
+    if (endsHereToo) {
       if (this.isLastInterval()) {
         // Workout complete.
+        this.emitEndCue(this.pendingCues);
         this.state = { ...this.state, status: 'completed' };
         return this.buildTickData(0);
       }
 
       // Auto-advance OFF: freeze at 0, wait for skip().
+      this.emitEndCue(this.pendingCues);
       return this.buildTickData(0);
     }
 
@@ -268,9 +349,15 @@ export class TimerEngine {
    * @returns Array of ToneNames to play this tick.
    */
   getAudioCuesToFire(remainingMs: number): ToneName[] {
-    if (!this.state || this.state.status !== 'running') return [];
+    // Cues queued by a boundary crossing inside tick() are always delivered.
+    // The crossing already happened, and on the final interval the status is
+    // 'completed' by the time the caller gets here — the completion flourish
+    // must still play.
+    const cues: ToneName[] = this.pendingCues;
+    this.pendingCues = [];
 
-    const cues: ToneName[] = [];
+    if (!this.state || this.state.status !== 'running') return cues;
+
     const round = this.state.currentRound;
     const idx = this.state.currentIntervalIndex;
     const isRest = this.state.isRestBetweenSets;
@@ -330,19 +417,48 @@ export class TimerEngine {
       }
     }
 
-    // Interval end cue at T=0.
-    const endKey = `${prefix}-end`;
-    if (!this.firedCues.has(endKey) && remainingMs <= AUDIO_PRE_FIRE_MS) {
-      this.firedCues.add(endKey);
-
-      if (this.isLastInterval()) {
-        cues.push('workoutComplete');
-      } else {
-        cues.push('intervalEnd');
-      }
+    // Interval end cue at T=0. Pre-fires when a tick happens to land inside
+    // the buffer; tick() emits the same cue at the boundary crossing when no
+    // tick does, so it is never missed.
+    if (remainingMs <= AUDIO_PRE_FIRE_MS) {
+      this.emitEndCue(cues);
     }
 
     return cues;
+  }
+
+  /**
+   * Consume the context of the most recent end cue, or null when there is
+   * none left to read.
+   *
+   * Captured at the moment the boundary is detected, so the caller gets the
+   * right values whether the cue pre-fired or was emitted after the engine
+   * had already advanced past the interval that ended.
+   */
+  consumeEndCueContext(): EndCueContext | null {
+    const context = this.pendingEndContext;
+    this.pendingEndContext = null;
+    return context;
+  }
+
+  /**
+   * Emit the end-of-interval cue for the interval that is ending right now,
+   * into `out`. Guarded by firedCues so it fires exactly once per interval.
+   */
+  private emitEndCue(out: ToneName[]): void {
+    if (!this.state) return;
+
+    const { currentRound, currentIntervalIndex, isRestBetweenSets } = this.state;
+    const endKey = `r${currentRound}-i${currentIntervalIndex}-rest${isRestBetweenSets}-end`;
+    if (this.firedCues.has(endKey)) return;
+    this.firedCues.add(endKey);
+
+    this.pendingEndContext = {
+      nextIntervalName: this.getNextInterval()?.name ?? null,
+      endedDuringRest: isRestBetweenSets,
+    };
+
+    out.push(this.isLastInterval() ? 'workoutComplete' : 'intervalEnd');
   }
 
   // -----------------------------------------------------------------------
@@ -405,6 +521,8 @@ export class TimerEngine {
     this.sequence = sequence;
     this.timeline = flattenSequenceToTimeline(sequence);
     this.firedCues.clear();
+    this.pendingCues = [];
+    this.pendingEndContext = null;
 
     // If the session was running when saved, we need to account for the
     // time between save and restore. The absolute-time approach handles

@@ -263,15 +263,65 @@ describe('Lifecycle', () => {
       expect(engine.getState()!.status).toBe('completed');
     });
 
-    it('works when paused', () => {
+    it('advances but stays paused when paused', () => {
       engine.startWorkout(makeSequence());
       engine.pause();
       engine.skip();
 
-      // Should have advanced and set status to running
+      // Advances, but must not silently resume the workout.
       const state = engine.getState()!;
       expect(state.currentIntervalIndex).toBe(1);
-      expect(state.status).toBe('running');
+      expect(state.status).toBe('paused');
+      expect(state.pausedAt).toBe(now);
+    });
+
+    it('holds the new interval at its full duration while paused', () => {
+      const seq = makeSequence({
+        intervals: [
+          makeInterval({ duration_seconds: 10 }),
+          makeInterval({ duration_seconds: 30 }),
+        ],
+      });
+      engine.startWorkout(seq);
+      advanceTime(4000);
+      engine.pause();
+      advanceTime(9000); // time spent paused before the skip
+      engine.skip();
+
+      expect(engine.tick()!.remainingMs).toBe(30_000);
+
+      advanceTime(6000); // still paused, clock must not move
+      expect(engine.tick()!.remainingMs).toBe(30_000);
+    });
+
+    it('resumes the skipped-to interval from its full duration', () => {
+      const seq = makeSequence({
+        intervals: [
+          makeInterval({ duration_seconds: 10 }),
+          makeInterval({ duration_seconds: 30 }),
+        ],
+      });
+      engine.startWorkout(seq);
+      engine.pause();
+      engine.skip();
+      advanceTime(8000);
+      engine.resume();
+
+      expect(engine.getState()!.status).toBe('running');
+      expect(engine.tick()!.remainingMs).toBe(30_000);
+
+      advanceTime(5000);
+      expect(engine.tick()!.remainingMs).toBe(25_000);
+    });
+
+    it('completes rather than staying paused on the final skip', () => {
+      const seq = makeSequence({ repeat_count: 1 });
+      engine.startWorkout(seq);
+      engine.pause();
+      engine.skip(); // to the last interval
+      engine.skip(); // past the end
+
+      expect(engine.getState()!.status).toBe('completed');
     });
 
     it('is a no-op when no workout is active', () => {
@@ -1020,6 +1070,184 @@ describe('Audio cue detection (getAudioCuesToFire)', () => {
     engine.getAudioCuesToFire(20_000); // first tick
     const cues = engine.getAudioCuesToFire(10_000);
     expect(cues).not.toContain('halfway');
+  });
+
+  // -------------------------------------------------------------------------
+  // Edge-triggered end cues.
+  //
+  // The native loop ticks every 100ms. A cue that only fires while remaining
+  // time sits inside a 50ms window is stepped over about half the time, which
+  // is why these tests drive the engine through tick() at 100ms and never
+  // land inside the window.
+  // -------------------------------------------------------------------------
+
+  it('fires intervalEnd when a 100ms tick steps over the boundary', () => {
+    const seq = makeSequence({
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 5 }),
+        makeInterval({ duration_seconds: 5 }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs); // intervalStart
+
+    // Land 70ms past the boundary — outside the old 50ms pre-fire window.
+    advanceTime(5070);
+    const cues = engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(cues).toContain('intervalEnd');
+  });
+
+  it('fires workoutComplete when a 100ms tick steps over the final boundary', () => {
+    const seq = makeSequence({
+      repeat_count: 1,
+      intervals: [makeInterval({ duration_seconds: 5 })],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs); // intervalStart
+
+    advanceTime(5070);
+    const tick = engine.tick()!;
+    expect(tick.status).toBe('completed');
+
+    expect(engine.getAudioCuesToFire(tick.remainingMs)).toContain('workoutComplete');
+  });
+
+  it('fires the end cue exactly once across many ticks past the boundary', () => {
+    const seq = makeSequence({
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 5 }),
+        makeInterval({ duration_seconds: 60 }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    const fired: ToneName[] = [];
+    for (let i = 0; i < 60; i++) {
+      advanceTime(100);
+      fired.push(...engine.getAudioCuesToFire(engine.tick()!.remainingMs));
+    }
+
+    expect(fired.filter((c) => c === 'intervalEnd')).toHaveLength(1);
+  });
+
+  it('fires the end cue when auto_advance is off and the interval freezes at 0', () => {
+    const seq = makeSequence({
+      auto_advance: false,
+      intervals: [
+        makeInterval({ duration_seconds: 5 }),
+        makeInterval({ duration_seconds: 5 }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(5070);
+    const cues = engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(cues).toContain('intervalEnd');
+  });
+
+  it('reports the next interval name and rest flag with the end cue', () => {
+    const seq = makeSequence({
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 5, name: 'Push' }),
+        makeInterval({ duration_seconds: 5, name: 'Pull' }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(5070);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(engine.consumeEndCueContext()).toEqual({
+      nextIntervalName: 'Pull',
+      endedDuringRest: false,
+    });
+  });
+
+  it('flags the end cue that closes a rest period', () => {
+    const seq = makeSequence({
+      repeat_count: 2,
+      rest_between_sets_seconds: 5,
+      auto_advance: true,
+      intervals: [makeInterval({ duration_seconds: 5, name: 'Work' })],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(5070); // into rest
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+    engine.consumeEndCueContext();
+
+    advanceTime(5000); // rest over
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(engine.consumeEndCueContext()).toEqual({
+      nextIntervalName: 'Work',
+      endedDuringRest: true,
+    });
+  });
+
+  it('plays only the flourish when the workout finished during a gap', () => {
+    // Two intervals, both elapsed while the app was away. The loop crosses
+    // A's boundary and the post-loop branch completes on B. Only one sound
+    // belongs on that tick, and it is the flourish.
+    const seq = makeSequence({
+      repeat_count: 1,
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 5, name: 'A' }),
+        makeInterval({ duration_seconds: 5, name: 'B' }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(11_000);
+    const tick = engine.tick()!;
+    expect(tick.status).toBe('completed');
+
+    expect(engine.getAudioCuesToFire(tick.remainingMs)).toEqual([
+      'workoutComplete',
+    ]);
+  });
+
+  it('announces nothing after fast-forwarding over several boundaries', () => {
+    // A-B-C-D at 10s each. Background during A, return 25s later, inside C.
+    // B's end cue is dropped as unheard — its context must go with it, or
+    // the caller announces "B", an interval that has already been and gone.
+    const seq = makeSequence({
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 10, name: 'A' }),
+        makeInterval({ duration_seconds: 10, name: 'B' }),
+        makeInterval({ duration_seconds: 10, name: 'C' }),
+        makeInterval({ duration_seconds: 10, name: 'D' }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(25_000);
+    const tick = engine.tick()!;
+    expect(tick.currentInterval.name).toBe('C');
+
+    engine.getAudioCuesToFire(tick.remainingMs);
+
+    expect(engine.consumeEndCueContext()).toBeNull();
+  });
+
+  it('has no end cue context to consume when no boundary was crossed', () => {
+    engine.startWorkout(makeSequence());
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(engine.consumeEndCueContext()).toBeNull();
   });
 
   it('still fires intervalEnd when rest-between-sets ends', () => {
