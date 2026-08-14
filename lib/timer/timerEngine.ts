@@ -298,12 +298,18 @@ export class TimerEngine {
       );
     }
 
+    // The interval the loop landed on has itself already run out: either the
+    // workout finished during the gap, or auto-advance is off and the timer
+    // freezes at 0. Either way this is one more boundary on the same tick.
+    const endsHereToo = remainingMs <= 0 && this.state.status === 'running';
+
     // Exactly one boundary crossed — deliver its end cue. More than one means
     // the app was away and intervals elapsed unheard; a burst of beeps on
-    // return would be noise, so those cues are dropped.
-    if (safetyCounter === 1) {
+    // return would be noise, so those cues are dropped. The cue emitted below
+    // counts towards that total, and supersedes the loop's.
+    if (safetyCounter === 1 && !endsHereToo) {
       this.pendingCues.push(...crossingCues);
-    } else if (safetyCounter > 1) {
+    } else if (safetyCounter >= 1) {
       // The context has to go with the dropped cue. It names the interval
       // that followed the FIRST boundary of the gap — an interval that has
       // itself already finished — and leaving it behind makes the caller
@@ -312,7 +318,7 @@ export class TimerEngine {
     }
 
     // After the loop, handle remaining edge cases.
-    if (remainingMs <= 0 && this.state.status === 'running') {
+    if (endsHereToo) {
       if (this.isLastInterval()) {
         // Workout complete.
         this.emitEndCue(this.pendingCues);

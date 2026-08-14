@@ -1194,6 +1194,30 @@ describe('Audio cue detection (getAudioCuesToFire)', () => {
     });
   });
 
+  it('plays only the flourish when the workout finished during a gap', () => {
+    // Two intervals, both elapsed while the app was away. The loop crosses
+    // A's boundary and the post-loop branch completes on B. Only one sound
+    // belongs on that tick, and it is the flourish.
+    const seq = makeSequence({
+      repeat_count: 1,
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 5, name: 'A' }),
+        makeInterval({ duration_seconds: 5, name: 'B' }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(11_000);
+    const tick = engine.tick()!;
+    expect(tick.status).toBe('completed');
+
+    expect(engine.getAudioCuesToFire(tick.remainingMs)).toEqual([
+      'workoutComplete',
+    ]);
+  });
+
   it('announces nothing after fast-forwarding over several boundaries', () => {
     // A-B-C-D at 10s each. Background during A, return 25s later, inside C.
     // B's end cue is dropped as unheard — its context must go with it, or
