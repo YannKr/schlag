@@ -12,7 +12,7 @@ Free, no ads, no paywalls.
 - Precise countdown timer with absolute-time calculation (no drift)
 - Audio cues: start beeps, 3-2-1 countdown, end tones, completion flourish
 - Voice countdown via text-to-speech
-- Three workout themes: dark, light, and interval-color tinted
+- Workout screen tinted with the colour of the interval you are on
 - 10 built-in workout templates (Tabata, EMOM, AMRAP, strength, mobility)
 - Workout history with streaks and analytics
 - Export/import sequences and workout history as JSON (imports merge, never overwrite)
