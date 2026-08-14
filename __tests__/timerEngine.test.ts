@@ -263,15 +263,65 @@ describe('Lifecycle', () => {
       expect(engine.getState()!.status).toBe('completed');
     });
 
-    it('works when paused', () => {
+    it('advances but stays paused when paused', () => {
       engine.startWorkout(makeSequence());
       engine.pause();
       engine.skip();
 
-      // Should have advanced and set status to running
+      // Advances, but must not silently resume the workout.
       const state = engine.getState()!;
       expect(state.currentIntervalIndex).toBe(1);
-      expect(state.status).toBe('running');
+      expect(state.status).toBe('paused');
+      expect(state.pausedAt).toBe(now);
+    });
+
+    it('holds the new interval at its full duration while paused', () => {
+      const seq = makeSequence({
+        intervals: [
+          makeInterval({ duration_seconds: 10 }),
+          makeInterval({ duration_seconds: 30 }),
+        ],
+      });
+      engine.startWorkout(seq);
+      advanceTime(4000);
+      engine.pause();
+      advanceTime(9000); // time spent paused before the skip
+      engine.skip();
+
+      expect(engine.tick()!.remainingMs).toBe(30_000);
+
+      advanceTime(6000); // still paused, clock must not move
+      expect(engine.tick()!.remainingMs).toBe(30_000);
+    });
+
+    it('resumes the skipped-to interval from its full duration', () => {
+      const seq = makeSequence({
+        intervals: [
+          makeInterval({ duration_seconds: 10 }),
+          makeInterval({ duration_seconds: 30 }),
+        ],
+      });
+      engine.startWorkout(seq);
+      engine.pause();
+      engine.skip();
+      advanceTime(8000);
+      engine.resume();
+
+      expect(engine.getState()!.status).toBe('running');
+      expect(engine.tick()!.remainingMs).toBe(30_000);
+
+      advanceTime(5000);
+      expect(engine.tick()!.remainingMs).toBe(25_000);
+    });
+
+    it('completes rather than staying paused on the final skip', () => {
+      const seq = makeSequence({ repeat_count: 1 });
+      engine.startWorkout(seq);
+      engine.pause();
+      engine.skip(); // to the last interval
+      engine.skip(); // past the end
+
+      expect(engine.getState()!.status).toBe('completed');
     });
 
     it('is a no-op when no workout is active', () => {

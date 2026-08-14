@@ -169,7 +169,21 @@ export class TimerEngine {
     if (!this.state || !this.sequence) return;
     if (this.state.status !== 'running' && this.state.status !== 'paused') return;
 
+    const wasPaused = this.state.status === 'paused';
+
     this.advanceToNext();
+
+    // advanceToNext() always sets 'running'. Skipping while paused used to
+    // resume the workout with no sign of it: the screen still read Paused
+    // and the session log still held an open pause entry that never got a
+    // resumed_at. Stay paused at the start of the new interval instead.
+    if (wasPaused && this.state.status === 'running') {
+      this.state = {
+        ...this.state,
+        status: 'paused',
+        pausedAt: Date.now(),
+      };
+    }
   }
 
   /**
