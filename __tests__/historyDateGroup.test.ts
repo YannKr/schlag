@@ -7,11 +7,10 @@
  * east of UTC, so every session was filed one group too early.
  *
  * The suite runs in Asia/Tokyo (UTC+9, no DST) so the two ways of building a
- * key always disagree.
+ * key always disagree. The timezone is set in jest.config.ts — assigning
+ * process.env.TZ from a test file does nothing, because the sandbox's Date
+ * has already read the zone by the time the file is evaluated.
  */
-
-// Must run before anything constructs a Date.
-process.env.TZ = 'Asia/Tokyo';
 
 // MMKV needs native bindings, and uuid ships ESM that jest does not transform.
 jest.mock('@/lib/storage', () => ({

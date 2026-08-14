@@ -30,7 +30,10 @@ jest.mock('expo-router', () => {
   const React = jest.requireActual('react');
   const Stack = ({ children }: { children?: React.ReactNode }) =>
     React.createElement('Stack', null, children);
-  Stack.Screen = () => null;
+  Stack.displayName = 'Stack';
+  const Screen = () => null;
+  Screen.displayName = 'Stack.Screen';
+  Stack.Screen = Screen;
   return {
     Stack,
     useRouter: () => ({ push: mockPush, back: jest.fn(), replace: jest.fn() }),

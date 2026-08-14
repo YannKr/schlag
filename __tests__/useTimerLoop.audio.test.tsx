@@ -62,8 +62,7 @@ jest.mock('@/lib/audio/audioEngine', () => ({
       isMuted: jest.fn(() => muted),
       cleanup: jest.fn().mockResolvedValue(undefined),
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (!mockFirstAudio) mockFirstAudio = instance as any;
+    if (!mockFirstAudio) mockFirstAudio = instance;
     return instance;
   }),
 }));

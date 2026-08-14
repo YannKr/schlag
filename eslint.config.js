@@ -1,4 +1,9 @@
 // https://docs.expo.dev/guides/using-eslint/
+//
+// The lint script passes --max-warnings 25, which is the count of
+// pre-existing warnings on main at the time this config was added. New code
+// must not add to it. The number goes down as those warnings are cleared; it
+// should never go up.
 const { defineConfig } = require('eslint/config');
 const expoConfig = require('eslint-config-expo/flat');
 
