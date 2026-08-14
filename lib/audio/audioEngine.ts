@@ -57,6 +57,17 @@ export class AudioEngine {
     return useSettingsStore.getState().settings.selectedVoiceId;
   }
 
+  /**
+   * Master volume for built-in tones, read fresh on every cue so the
+   * Settings slider takes effect immediately. Clamped to 0..1; a missing or
+   * malformed stored value falls back to full scale.
+   */
+  private getBeepVolume(): number {
+    const volume = useSettingsStore.getState().settings.beepVolume;
+    if (typeof volume !== 'number' || !Number.isFinite(volume)) return 1;
+    return Math.min(1, Math.max(0, volume));
+  }
+
   // -----------------------------------------------------------------------
   // Lifecycle
   // -----------------------------------------------------------------------
@@ -130,7 +141,9 @@ export class AudioEngine {
    */
   playIntervalStart(): void {
     if (this.muted) return;
-    this.toneGenerator.playTone('intervalStart').catch(this.logError('intervalStart'));
+    this.toneGenerator
+      .playTone('intervalStart', this.getBeepVolume())
+      .catch(this.logError('intervalStart'));
   }
 
   /**
@@ -148,7 +161,7 @@ export class AudioEngine {
     };
 
     this.toneGenerator
-      .playTone(toneMap[secondsRemaining])
+      .playTone(toneMap[secondsRemaining], this.getBeepVolume())
       .catch(this.logError(toneMap[secondsRemaining]));
 
     if (voiceEnabled) {
@@ -171,7 +184,9 @@ export class AudioEngine {
     if (customUri) {
       this.playCustomAudio(customUri);
     } else {
-      this.toneGenerator.playTone('intervalEnd').catch(this.logError('intervalEnd'));
+      this.toneGenerator
+        .playTone('intervalEnd', this.getBeepVolume())
+        .catch(this.logError('intervalEnd'));
     }
   }
 
@@ -182,7 +197,7 @@ export class AudioEngine {
   playWorkoutComplete(): void {
     if (this.muted) return;
     this.toneGenerator
-      .playTone('workoutComplete')
+      .playTone('workoutComplete', this.getBeepVolume())
       .catch(this.logError('workoutComplete'));
   }
 
@@ -191,7 +206,9 @@ export class AudioEngine {
    */
   playPauseClick(): void {
     if (this.muted) return;
-    this.toneGenerator.playTone('pauseClick').catch(this.logError('pauseClick'));
+    this.toneGenerator
+      .playTone('pauseClick', this.getBeepVolume())
+      .catch(this.logError('pauseClick'));
   }
 
   /**
@@ -199,7 +216,9 @@ export class AudioEngine {
    */
   playHalfway(voiceEnabled: boolean): void {
     if (this.muted) return;
-    this.toneGenerator.playTone('halfway').catch(this.logError('halfway'));
+    this.toneGenerator
+      .playTone('halfway', this.getBeepVolume())
+      .catch(this.logError('halfway'));
     if (voiceEnabled) {
       this.speechEngine.speakHalfway();
     }
@@ -255,7 +274,9 @@ export class AudioEngine {
     } catch (error) {
       console.warn('[AudioEngine] Error playing custom audio:', error);
       // Fall back to the built-in interval end tone.
-      this.toneGenerator.playTone('intervalEnd').catch(this.logError('intervalEnd'));
+      this.toneGenerator
+        .playTone('intervalEnd', this.getBeepVolume())
+        .catch(this.logError('intervalEnd'));
     }
   }
 

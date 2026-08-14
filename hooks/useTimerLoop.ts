@@ -107,8 +107,9 @@ export function useTimerLoop(): UseTimerLoopReturn {
   const [tickData, setTickData] = useState<TimerTickData | null>(null);
   const [isActive, setIsActive] = useState(false);
 
-  // Global voice countdown setting (overrides per-sequence config when off).
+  // Global audio settings (each overrides the per-sequence config when off).
   const globalVoiceEnabled = useSettingsStore((s) => s.settings.voiceCountdownEnabled);
+  const globalBeepsEnabled = useSettingsStore((s) => s.settings.beepsEnabled);
 
   // -----------------------------------------------------------------------
   // Audio cue dispatcher
@@ -122,7 +123,9 @@ export function useTimerLoop(): UseTimerLoopReturn {
       // Voice is only enabled if BOTH the global setting AND the per-sequence
       // setting are true. The global toggle in Settings is the master switch.
       const voiceEnabled = globalVoiceEnabled && sequence.audio_config.use_voice_countdown;
-      const beepsEnabled = sequence.audio_config.use_builtin_beeps;
+      // Same rule for beeps: the "Interval beeps" toggle in Settings is the
+      // master switch over the per-sequence setting.
+      const beepsEnabled = globalBeepsEnabled && sequence.audio_config.use_builtin_beeps;
 
       for (const cue of cues) {
         switch (cue) {
@@ -169,7 +172,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
         }
       }
     },
-    [globalVoiceEnabled],
+    [globalVoiceEnabled, globalBeepsEnabled],
   );
 
   // -----------------------------------------------------------------------

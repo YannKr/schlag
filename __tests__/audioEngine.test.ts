@@ -76,9 +76,15 @@ jest.mock('@/lib/audio/speechEngine', () => {
 });
 
 let mockSelectedVoiceId: string | null | undefined = null;
+let mockBeepVolume: unknown = 1;
 jest.mock('@/stores/settingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ settings: { selectedVoiceId: mockSelectedVoiceId } }),
+    getState: () => ({
+      settings: {
+        selectedVoiceId: mockSelectedVoiceId,
+        beepVolume: mockBeepVolume,
+      },
+    }),
   },
 }));
 
@@ -92,6 +98,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockPlatformOS = 'ios';
   mockSelectedVoiceId = null;
+  mockBeepVolume = 1;
   mockToneInit.mockResolvedValue(undefined);
   mockTonePlay.mockResolvedValue(undefined);
   mockToneCleanup.mockResolvedValue(undefined);
@@ -183,11 +190,57 @@ describe('AudioEngine.unlockWebAudio', () => {
   });
 });
 
+describe('AudioEngine beep volume', () => {
+  it('passes the stored beep volume to the tone generator', () => {
+    mockBeepVolume = 0.3;
+    const engine = new AudioEngine();
+    engine.playIntervalStart();
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart', 0.3);
+  });
+
+  it('re-reads the volume on every cue so the slider takes effect at once', () => {
+    const engine = new AudioEngine();
+    engine.playIntervalStart();
+    mockBeepVolume = 0.1;
+    engine.playIntervalStart();
+    expect(mockTonePlay).toHaveBeenNthCalledWith(1, 'intervalStart', 1);
+    expect(mockTonePlay).toHaveBeenNthCalledWith(2, 'intervalStart', 0.1);
+  });
+
+  it('clamps a volume outside 0..1', () => {
+    mockBeepVolume = 4;
+    new AudioEngine().playIntervalStart();
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart', 1);
+
+    mockTonePlay.mockClear();
+    mockBeepVolume = -2;
+    new AudioEngine().playIntervalStart();
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart', 0);
+  });
+
+  it('falls back to full scale when the stored volume is not a number', () => {
+    mockBeepVolume = 'loud';
+    new AudioEngine().playIntervalStart();
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart', 1);
+
+    mockTonePlay.mockClear();
+    mockBeepVolume = undefined;
+    new AudioEngine().playIntervalStart();
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart', 1);
+  });
+
+  it('applies the volume to the completion flourish too', () => {
+    mockBeepVolume = 0.5;
+    new AudioEngine().playWorkoutComplete();
+    expect(mockTonePlay).toHaveBeenCalledWith('workoutComplete', 0.5);
+  });
+});
+
 describe('AudioEngine.playIntervalStart', () => {
   it('plays the intervalStart tone', () => {
     const engine = new AudioEngine();
     engine.playIntervalStart();
-    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart');
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart', 1);
   });
 
   it('swallows tone playback errors', async () => {
@@ -206,7 +259,7 @@ describe('AudioEngine.playCountdown', () => {
   ] as const)('maps secondsRemaining %i to tone %s', (n, toneName) => {
     const engine = new AudioEngine();
     engine.playCountdown(n, false);
-    expect(mockTonePlay).toHaveBeenCalledWith(toneName);
+    expect(mockTonePlay).toHaveBeenCalledWith(toneName, 1);
   });
 
   it('skips voice when voiceEnabled is false', () => {
@@ -226,13 +279,13 @@ describe('AudioEngine.playIntervalEnd', () => {
   it('plays the built-in intervalEnd tone when no custom URI is provided', () => {
     const engine = new AudioEngine();
     engine.playIntervalEnd();
-    expect(mockTonePlay).toHaveBeenCalledWith('intervalEnd');
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalEnd', 1);
   });
 
   it('plays the built-in intervalEnd tone when customUri is null', () => {
     const engine = new AudioEngine();
     engine.playIntervalEnd(null);
-    expect(mockTonePlay).toHaveBeenCalledWith('intervalEnd');
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalEnd', 1);
   });
 
   it('does not fall through to the built-in tone when a custom URI is provided', async () => {
@@ -246,7 +299,7 @@ describe('AudioEngine.playIntervalEnd', () => {
     engine.playIntervalEnd('https://example.com/end.mp3');
     await flushMicrotasks();
 
-    expect(mockTonePlay).not.toHaveBeenCalledWith('intervalEnd');
+    expect(mockTonePlay).not.toHaveBeenCalledWith('intervalEnd', 1);
     expect(playStub).toHaveBeenCalled();
   });
 });
@@ -255,7 +308,7 @@ describe('AudioEngine.playWorkoutComplete', () => {
   it('plays the workoutComplete flourish', () => {
     const engine = new AudioEngine();
     engine.playWorkoutComplete();
-    expect(mockTonePlay).toHaveBeenCalledWith('workoutComplete');
+    expect(mockTonePlay).toHaveBeenCalledWith('workoutComplete', 1);
   });
 });
 
@@ -263,7 +316,7 @@ describe('AudioEngine.playPauseClick', () => {
   it('plays the pauseClick tone', () => {
     const engine = new AudioEngine();
     engine.playPauseClick();
-    expect(mockTonePlay).toHaveBeenCalledWith('pauseClick');
+    expect(mockTonePlay).toHaveBeenCalledWith('pauseClick', 1);
   });
 });
 
@@ -271,14 +324,14 @@ describe('AudioEngine.playHalfway', () => {
   it('plays the halfway tone without voice when voiceEnabled is false', () => {
     const engine = new AudioEngine();
     engine.playHalfway(false);
-    expect(mockTonePlay).toHaveBeenCalledWith('halfway');
+    expect(mockTonePlay).toHaveBeenCalledWith('halfway', 1);
     expect(mockSpeakHalfway).not.toHaveBeenCalled();
   });
 
   it('plays the halfway tone and speaks "Halfway" when voiceEnabled is true', () => {
     const engine = new AudioEngine();
     engine.playHalfway(true);
-    expect(mockTonePlay).toHaveBeenCalledWith('halfway');
+    expect(mockTonePlay).toHaveBeenCalledWith('halfway', 1);
     expect(mockSpeakHalfway).toHaveBeenCalledTimes(1);
   });
 });
@@ -379,8 +432,8 @@ describe('AudioEngine mute', () => {
     engine.playCountdown(1, true);
     engine.speakNextInterval('Squat', true);
 
-    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart');
-    expect(mockTonePlay).toHaveBeenCalledWith('countdown1');
+    expect(mockTonePlay).toHaveBeenCalledWith('intervalStart', 1);
+    expect(mockTonePlay).toHaveBeenCalledWith('countdown1', 1);
     expect(mockSpeakCountdown).toHaveBeenCalledWith(1);
     expect(mockSpeakNext).toHaveBeenCalledWith('Squat');
   });
