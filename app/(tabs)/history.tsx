@@ -286,6 +286,8 @@ const SessionRow = React.memo<SessionRowProps>(({ session, index, onLongPress })
   );
 });
 
+SessionRow.displayName = 'SessionRow';
+
 // ---------------------------------------------------------------------------
 // Empty state
 // ---------------------------------------------------------------------------
@@ -296,7 +298,7 @@ function EmptyState() {
       <Text style={styles.emptyIcon}>∅</Text>
       <Text style={styles.emptyTitle}>No sessions yet</Text>
       <Text style={styles.emptySubtitle}>
-        Finish a workout and it'll log here.
+        Finish a workout and it&apos;ll log here.
       </Text>
     </View>
   );

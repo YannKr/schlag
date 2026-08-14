@@ -186,6 +186,8 @@ const TemplateCard = React.memo<TemplateCardProps>(
   },
 );
 
+TemplateCard.displayName = 'TemplateCard';
+
 // ---------------------------------------------------------------------------
 // Templates Screen
 // ---------------------------------------------------------------------------

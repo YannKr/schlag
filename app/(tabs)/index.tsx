@@ -168,6 +168,8 @@ const SequenceRow = React.memo<SequenceRowProps>(
   },
 );
 
+SequenceRow.displayName = 'SequenceRow';
+
 // ---------------------------------------------------------------------------
 // Empty state
 // ---------------------------------------------------------------------------
