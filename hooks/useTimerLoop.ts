@@ -186,36 +186,43 @@ export function useTimerLoop(): UseTimerLoopReturn {
       return;
     }
 
-    // Check for audio cues to fire.
-    if (data.status === 'running') {
+    // Check for audio cues to fire. 'completed' is included because the
+    // completion flourish is emitted by the same tick that ends the workout.
+    if (data.status === 'running' || data.status === 'completed') {
       const cues = engine.getAudioCuesToFire(data.remainingMs);
+      // Describes the interval that ended, which the engine may already have
+      // advanced past — data.isRestBetweenSets refers to the new one.
+      const endContext = engine.consumeEndCueContext();
+
       if (cues.length > 0) {
-        // During rest, suppress the intervalEnd double-beep (the voice
-        // announcement still fires below). This prevents a burst of
+        // When a rest period ends, suppress the intervalEnd double-beep (the
+        // voice announcement still fires below). This prevents a burst of
         // beeps at the rest-to-work transition.
-        if (data.isRestBetweenSets) {
-          const filtered = cues.filter((c) => c !== 'intervalEnd');
-          if (filtered.length > 0) {
-            dispatchAudioCues(filtered, sequenceRef.current);
-          }
-        } else {
-          dispatchAudioCues(cues, sequenceRef.current);
+        const toPlay = endContext?.endedDuringRest
+          ? cues.filter((c) => c !== 'intervalEnd')
+          : cues;
+        if (toPlay.length > 0) {
+          dispatchAudioCues(toPlay, sequenceRef.current);
         }
       }
 
       // Speak next interval name when the interval-end cue fires.
-      if (cues.includes('intervalEnd') && data.nextInterval) {
+      let announcedName: string | null = null;
+      if (endContext?.nextIntervalName) {
         const seq = sequenceRef.current;
         if (globalVoiceEnabled && seq?.audio_config.use_voice_countdown) {
           audioRef.current.speakNextInterval(
-            data.nextInterval.name,
+            endContext.nextIntervalName,
             true,
           );
+          announcedName = endContext.nextIntervalName;
         }
       }
 
-      // v2: Announce current interval name at the start.
-      if (cues.includes('intervalStart')) {
+      // v2: Announce current interval name at the start. The end cue and the
+      // start cue land on the same tick at a boundary, so skip this when the
+      // announcement above already said the same name.
+      if (cues.includes('intervalStart') && data.currentInterval.name !== announcedName) {
         const seq = sequenceRef.current;
         if (globalVoiceEnabled && seq?.audio_config.announce_interval_names && seq.audio_config.use_voice_countdown) {
           audioRef.current.speakNextInterval(

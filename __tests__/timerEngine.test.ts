@@ -1022,6 +1022,135 @@ describe('Audio cue detection (getAudioCuesToFire)', () => {
     expect(cues).not.toContain('halfway');
   });
 
+  // -------------------------------------------------------------------------
+  // Edge-triggered end cues.
+  //
+  // The native loop ticks every 100ms. A cue that only fires while remaining
+  // time sits inside a 50ms window is stepped over about half the time, which
+  // is why these tests drive the engine through tick() at 100ms and never
+  // land inside the window.
+  // -------------------------------------------------------------------------
+
+  it('fires intervalEnd when a 100ms tick steps over the boundary', () => {
+    const seq = makeSequence({
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 5 }),
+        makeInterval({ duration_seconds: 5 }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs); // intervalStart
+
+    // Land 70ms past the boundary — outside the old 50ms pre-fire window.
+    advanceTime(5070);
+    const cues = engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(cues).toContain('intervalEnd');
+  });
+
+  it('fires workoutComplete when a 100ms tick steps over the final boundary', () => {
+    const seq = makeSequence({
+      repeat_count: 1,
+      intervals: [makeInterval({ duration_seconds: 5 })],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs); // intervalStart
+
+    advanceTime(5070);
+    const tick = engine.tick()!;
+    expect(tick.status).toBe('completed');
+
+    expect(engine.getAudioCuesToFire(tick.remainingMs)).toContain('workoutComplete');
+  });
+
+  it('fires the end cue exactly once across many ticks past the boundary', () => {
+    const seq = makeSequence({
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 5 }),
+        makeInterval({ duration_seconds: 60 }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    const fired: ToneName[] = [];
+    for (let i = 0; i < 60; i++) {
+      advanceTime(100);
+      fired.push(...engine.getAudioCuesToFire(engine.tick()!.remainingMs));
+    }
+
+    expect(fired.filter((c) => c === 'intervalEnd')).toHaveLength(1);
+  });
+
+  it('fires the end cue when auto_advance is off and the interval freezes at 0', () => {
+    const seq = makeSequence({
+      auto_advance: false,
+      intervals: [
+        makeInterval({ duration_seconds: 5 }),
+        makeInterval({ duration_seconds: 5 }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(5070);
+    const cues = engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(cues).toContain('intervalEnd');
+  });
+
+  it('reports the next interval name and rest flag with the end cue', () => {
+    const seq = makeSequence({
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 5, name: 'Push' }),
+        makeInterval({ duration_seconds: 5, name: 'Pull' }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(5070);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(engine.consumeEndCueContext()).toEqual({
+      nextIntervalName: 'Pull',
+      endedDuringRest: false,
+    });
+  });
+
+  it('flags the end cue that closes a rest period', () => {
+    const seq = makeSequence({
+      repeat_count: 2,
+      rest_between_sets_seconds: 5,
+      auto_advance: true,
+      intervals: [makeInterval({ duration_seconds: 5, name: 'Work' })],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(5070); // into rest
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+    engine.consumeEndCueContext();
+
+    advanceTime(5000); // rest over
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(engine.consumeEndCueContext()).toEqual({
+      nextIntervalName: 'Work',
+      endedDuringRest: true,
+    });
+  });
+
+  it('has no end cue context to consume when no boundary was crossed', () => {
+    engine.startWorkout(makeSequence());
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    expect(engine.consumeEndCueContext()).toBeNull();
+  });
+
   it('still fires intervalEnd when rest-between-sets ends', () => {
     const seq = makeSequence({
       repeat_count: 2,
