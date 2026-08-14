@@ -8,6 +8,7 @@ import { Alert, Platform, StyleSheet } from 'react-native';
 
 import { getTimerSession, clearTimerSession, getSequences, requestPersistentStorage, setStorageErrorHandler } from '@/lib/storage';
 import { registerServiceWorker } from '@/lib/registerServiceWorker';
+import { cancelScheduledNotifications } from '@/lib/notifications';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { SpeechEngine } from '@/lib/audio/speechEngine';
 
@@ -36,6 +37,17 @@ export default function RootLayout() {
   // Register the service worker for offline support (web production only).
   useEffect(() => {
     registerServiceWorker();
+  }, []);
+
+  // Backgrounding a running workout schedules up to MAX_BOUNDARY_EVENTS (60)
+  // local notifications, one per upcoming interval boundary. The app cancels
+  // them on foreground, pause, stop, completion and unmount, but a process
+  // kill runs none of that, so they stay in the OS queue and keep firing at a
+  // workout nobody is doing. Nothing can run at kill time — sweep them at the
+  // next launch instead. A workout that resumes re-schedules its own the next
+  // time it backgrounds.
+  useEffect(() => {
+    cancelScheduledNotifications();
   }, []);
 
   // Ask the browser to keep localStorage data permanently (prevents Firefox eviction).
