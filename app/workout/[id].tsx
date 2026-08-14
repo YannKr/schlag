@@ -588,6 +588,24 @@ export default function WorkoutScreen() {
       sessionIdRef.current = null;
 
       const td = tickDataRef.current;
+
+      // Backing out of the completion screen instead of pressing Done still
+      // leaves the workout finished. Recording it as stopped would file a
+      // finished workout as abandoned, with rounds and intervals a count
+      // short. Log it the way Done does.
+      if (td?.status === 'completed') {
+        completeSession(sessionId, {
+          intervals_completed: td.totalIntervals,
+          rounds_completed:
+            td.totalRounds > 0 ? td.totalRounds : td.currentRound,
+          total_active_seconds: Math.floor(
+            (Date.now() - startedAtRef.current) / 1000,
+          ),
+          total_rest_seconds: 0,
+        });
+        return;
+      }
+
       stopSessionLog(sessionId, {
         stopped_at_interval: td?.currentIntervalIndex ?? 0,
         stopped_at_round: td?.currentRound ?? 1,
