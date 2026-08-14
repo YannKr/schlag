@@ -577,6 +577,27 @@ export default function WorkoutScreen() {
 
     return () => {
       setInactive();
+
+      // Leaving with the hardware Back button or a back swipe unmounts this
+      // screen without going through Stop or Done, which used to leave the
+      // session logged as 'in_progress' for good. Close it out where the
+      // timer had reached. Stop and Done clear the ref first, so a session
+      // they already logged is never overwritten here.
+      const sessionId = sessionIdRef.current;
+      if (!sessionId) return;
+      sessionIdRef.current = null;
+
+      const td = tickDataRef.current;
+      stopSessionLog(sessionId, {
+        stopped_at_interval: td?.currentIntervalIndex ?? 0,
+        stopped_at_round: td?.currentRound ?? 1,
+        intervals_completed: td?.currentIntervalIndex ?? 0,
+        rounds_completed: Math.max(0, (td?.currentRound ?? 1) - 1),
+        total_active_seconds: Math.floor(
+          (Date.now() - startedAtRef.current) / 1000,
+        ),
+        total_rest_seconds: 0,
+      });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -680,6 +701,9 @@ export default function WorkoutScreen() {
           total_active_seconds: elapsedSeconds,
           total_rest_seconds: 0,
         });
+        // The unmount cleanup closes out any session still open — this one
+        // is logged, so take it off that list.
+        sessionIdRef.current = null;
       }
       timerLoop.stop();
       setInactive();
@@ -735,6 +759,9 @@ export default function WorkoutScreen() {
         total_active_seconds: elapsedSeconds,
         total_rest_seconds: 0,
       });
+      // The unmount cleanup closes out any session still open — this one is
+      // logged as completed, so take it off that list.
+      sessionIdRef.current = null;
     }
     timerLoop.stop();
     setInactive();
