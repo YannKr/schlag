@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
 
+import {
+  EMPTY_LIBRARY_TEXT,
+  createSequenceButton,
+  startWorkout,
+} from './helpers';
+
 test.describe('Schlag smoke tests', () => {
   test('library loads with no console errors', async ({ page }) => {
     const errors: string[] = [];
@@ -8,8 +14,9 @@ test.describe('Schlag smoke tests', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Page should have the app title
-    await expect(page.locator('text=Schlag')).toBeVisible();
+    // Fresh storage shows the library empty state
+    await expect(page.locator(`text=${EMPTY_LIBRARY_TEXT}`)).toBeVisible();
+    await expect(createSequenceButton(page)).toBeVisible();
 
     // No JS errors (filter out known dev-mode warnings)
     const real = errors.filter((e) => !e.includes('Wake Lock'));
@@ -21,8 +28,7 @@ test.describe('Schlag smoke tests', () => {
     await page.waitForLoadState('networkidle');
 
     // Click create
-    const createBtn = page.getByRole('button', { name: /create.*sequence/i });
-    await createBtn.first().click();
+    await createSequenceButton(page).click();
     await page.waitForURL(/\/builder\//);
 
     // Fill in name
@@ -43,8 +49,7 @@ test.describe('Schlag smoke tests', () => {
     await page.waitForLoadState('networkidle');
 
     // Create a sequence first
-    const createBtn = page.getByRole('button', { name: /create.*sequence/i });
-    await createBtn.first().click();
+    await createSequenceButton(page).click();
     await page.waitForURL(/\/builder\//);
 
     const nameInput = page.getByRole('textbox', { name: /sequence name/i });
@@ -55,20 +60,25 @@ test.describe('Schlag smoke tests', () => {
     await page.waitForURL('/');
 
     // Start the workout
-    const startBtn = page.getByRole('button', { name: /start quick timer/i });
-    await startBtn.click();
-    await page.waitForURL(/\/workout\//);
+    await startWorkout(page, 'Quick Timer');
 
-    // Timer controls should be visible
+    // Timer controls should be visible (after the 3s GET READY countdown)
     await expect(
       page.getByRole('button', { name: /pause workout/i }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 10_000 });
     await expect(
       page.getByRole('button', { name: /stop workout/i }),
     ).toBeVisible();
 
-    // Stop the workout
+    // Stop the workout. On web this raises a native confirm() — accept it,
+    // then verify we actually land back at the library.
+    page.on('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: /stop workout/i }).click();
+    await page.waitForURL('/');
+    // The sequence row is visible again in the library
+    await expect(
+      page.getByRole('button', { name: /quick timer.*tap to start/i }),
+    ).toBeVisible();
   });
 
   test('settings page renders all sections', async ({ page }) => {

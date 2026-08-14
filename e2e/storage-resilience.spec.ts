@@ -1,13 +1,14 @@
 import { test, expect } from '@playwright/test';
 
+import { EMPTY_LIBRARY_TEXT, createSequenceButton } from './helpers';
+
 test.describe('Storage resilience', () => {
   test('sequence persists across page reload', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
     // Create a sequence
-    const createBtn = page.getByRole('button', { name: /create.*sequence/i });
-    await createBtn.first().click();
+    await createSequenceButton(page).click();
     await page.waitForURL(/\/builder\//);
 
     const nameInput = page.getByRole('textbox', { name: /sequence name/i });
@@ -37,13 +38,18 @@ test.describe('Storage resilience', () => {
     await page.waitForLoadState('networkidle');
 
     // App should load and show the library (empty state)
-    await expect(page.locator('text=Schlag')).toBeVisible();
+    await expect(page.locator(`text=${EMPTY_LIBRARY_TEXT}`)).toBeVisible();
 
     const real = errors.filter((e) => !e.includes('Wake Lock'));
     expect(real).toEqual([]);
   });
 
   test('app shows error when localStorage quota is exceeded', async ({ page }) => {
+    // Register the pageerror listener BEFORE the save action so uncaught
+    // exceptions thrown during the quota-exceeded save are actually captured.
+    const pageErrors: string[] = [];
+    page.on('pageerror', (err) => pageErrors.push(err.message));
+
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
@@ -76,8 +82,7 @@ test.describe('Storage resilience', () => {
     });
 
     // Try to create and save a sequence
-    const createBtn = page.getByRole('button', { name: /create.*sequence/i });
-    await createBtn.first().click();
+    await createSequenceButton(page).click();
     await page.waitForURL(/\/builder\//);
 
     const nameInput = page.getByRole('textbox', { name: /sequence name/i });
@@ -92,9 +97,6 @@ test.describe('Storage resilience', () => {
     // Either we got an alert about storage failure, or the save
     // succeeded because the sequence JSON was small enough to fit.
     // Both are acceptable — the point is the app didn't crash.
-    const pageErrors: string[] = [];
-    page.on('pageerror', (err) => pageErrors.push(err.message));
-
     // Verify no uncaught exceptions
     const crashErrors = pageErrors.filter((e) => !e.includes('Wake Lock'));
     expect(crashErrors).toEqual([]);
