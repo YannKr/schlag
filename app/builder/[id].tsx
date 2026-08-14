@@ -45,6 +45,7 @@ import {
 } from '@/constants/validation';
 import { createDefaultInterval, createDefaultSequence } from '@/constants/defaults';
 import { useSequenceStore } from '@/stores/sequenceStore';
+import { EmptyState } from '@/components/EmptyState';
 import { IntervalRow } from '@/components/IntervalRow';
 import { IntervalEditSheet } from '@/components/IntervalEditSheet';
 import { DurationPicker } from '@/components/DurationPicker';
@@ -97,6 +98,7 @@ export default function BuilderScreen() {
   const isNew = id === 'new';
 
   const [sequence, setSequence] = useState<Sequence | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [editingInterval, setEditingInterval] = useState<Interval | null>(null);
   const [editSheetVisible, setEditSheetVisible] = useState(false);
   const [isInfinite, setIsInfinite] = useState(false);
@@ -111,14 +113,24 @@ export default function BuilderScreen() {
       const newSeq = createDefaultSequence();
       setSequence(newSeq);
       setIsInfinite(newSeq.repeat_count === 0);
-    } else if (id) {
-      const existing = getSequenceById(id);
-      if (existing) {
-        setSequence(JSON.parse(JSON.stringify(existing)) as Sequence);
-        setIsInfinite(existing.repeat_count === 0);
-      } else {
-        router.back();
-      }
+      return;
+    }
+
+    const existing = id ? getSequenceById(id) : undefined;
+    if (existing) {
+      setSequence(JSON.parse(JSON.stringify(existing)) as Sequence);
+      setIsInfinite(existing.repeat_count === 0);
+      return;
+    }
+
+    // The id is missing or names a sequence that is not in storage — a stale
+    // or malformed schlag:// link. router.back() is a no-op on a cold start
+    // (there is no screen behind this one), which used to leave the screen
+    // stuck on "Loading…" with no way out, so show an error state instead.
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      setNotFound(true);
     }
   }, [id, isNew, getSequenceById, router]);
 
@@ -338,6 +350,18 @@ export default function BuilderScreen() {
   );
 
   const keyExtractor = useCallback((item: Interval) => item.id, []);
+
+  if (notFound) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <EmptyState
+          message="That sequence could not be found. It may have been deleted, or the link may be wrong."
+          actionLabel="Go to library"
+          onAction={() => router.replace('/')}
+        />
+      </View>
+    );
+  }
 
   if (!sequence) {
     return (
