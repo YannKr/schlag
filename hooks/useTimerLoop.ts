@@ -100,6 +100,11 @@ export function useTimerLoop(): UseTimerLoopReturn {
   const isRunningRef = useRef(false);
   const sequenceRef = useRef<Sequence | null>(null);
 
+  // Name spoken by the most recent end cue. Held across ticks so the start
+  // cue for the same interval, which can arrive on the next tick, does not
+  // announce it a second time.
+  const announcedByEndRef = useRef<string | null>(null);
+
   // -----------------------------------------------------------------------
   // State — drives UI re-renders.
   // -----------------------------------------------------------------------
@@ -210,7 +215,6 @@ export function useTimerLoop(): UseTimerLoopReturn {
       }
 
       // Speak next interval name when the interval-end cue fires.
-      let announcedName: string | null = null;
       if (endContext?.nextIntervalName) {
         const seq = sequenceRef.current;
         if (globalVoiceEnabled && seq?.audio_config.use_voice_countdown) {
@@ -218,16 +222,24 @@ export function useTimerLoop(): UseTimerLoopReturn {
             endContext.nextIntervalName,
             true,
           );
-          announcedName = endContext.nextIntervalName;
+          announcedByEndRef.current = endContext.nextIntervalName;
         }
       }
 
-      // v2: Announce current interval name at the start. The end cue and the
-      // start cue land on the same tick at a boundary, so skip this when the
-      // announcement above already said the same name.
-      if (cues.includes('intervalStart') && data.currentInterval.name !== announcedName) {
+      // v2: Announce current interval name at the start. The end cue names
+      // the interval that is starting, so this must not say it again. The
+      // two can land on the same tick (the engine advanced first) or on
+      // consecutive ticks (the end cue pre-fired while the old interval was
+      // still counting down), which is why the check spans ticks. The ref is
+      // cleared straight after, so it only ever suppresses the one
+      // announcement that follows its own end cue.
+      if (cues.includes('intervalStart')) {
+        const alreadyAnnounced =
+          data.currentInterval.name === announcedByEndRef.current;
+        announcedByEndRef.current = null;
+
         const seq = sequenceRef.current;
-        if (globalVoiceEnabled && seq?.audio_config.announce_interval_names && seq.audio_config.use_voice_countdown) {
+        if (!alreadyAnnounced && globalVoiceEnabled && seq?.audio_config.announce_interval_names && seq.audio_config.use_voice_countdown) {
           audioRef.current.speakNextInterval(
             data.currentInterval.name,
             true,
@@ -307,6 +319,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
       cancelScheduledNotifications();
 
       sequenceRef.current = sequence;
+      announcedByEndRef.current = null;
       engine.startWorkout(sequence);
 
       startLoop();
@@ -351,6 +364,7 @@ export function useTimerLoop(): UseTimerLoopReturn {
       cancelScheduledNotifications();
 
       sequenceRef.current = sequence;
+      announcedByEndRef.current = null;
       engine.restoreSession(saved, sequence);
 
       // The engine rejects sessions whose interval index is out of range
