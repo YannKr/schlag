@@ -171,7 +171,11 @@ export default function BuilderScreen() {
     );
   }, []);
 
+  // Setting a round count is a finite choice, so it also leaves infinite
+  // mode. Without this the label kept reading "×∞" while repeat_count had
+  // already been set to a real number, and that number is what got saved.
   const handleRepeatIncrement = useCallback(() => {
+    setIsInfinite(false);
     setSequence((prev) =>
       prev
         ? { ...prev, repeat_count: Math.min(prev.repeat_count + 1, SEQUENCE_REPEAT_MAX) }
@@ -180,6 +184,7 @@ export default function BuilderScreen() {
   }, []);
 
   const handleRepeatDecrement = useCallback(() => {
+    setIsInfinite(false);
     setSequence((prev) =>
       prev
         ? { ...prev, repeat_count: Math.max(prev.repeat_count - 1, 1) }
