@@ -50,6 +50,9 @@ import {
   getSessions,
   setStorageErrorHandler,
   getStorageUsageBytes,
+  getQuarantinedKeys,
+  getQuarantinedValue,
+  clearQuarantined,
 } from '@/lib/storage';
 import type { Sequence } from '@/types/sequence';
 import type { WorkoutSession } from '@/types/session';
@@ -308,5 +311,111 @@ describe('session pruning', () => {
 
     // Storage should be identical — no write occurred.
     expect(mockStorageData).toEqual(storageBefore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Quarantine of unreadable data
+// ---------------------------------------------------------------------------
+
+describe('quarantine of unreadable stored data', () => {
+  const PREFIX = 'schlag-storage\\';
+  const BAD = '{"sequences": [truncated';
+
+  function writeCorrupt(key: string, raw: string = BAD): void {
+    mockStorageData.set(PREFIX + key, raw);
+  }
+
+  it('still falls back to a default so the app can start', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation();
+    writeCorrupt('schlag.sequences');
+
+    expect(getSequences()).toEqual([]);
+    spy.mockRestore();
+  });
+
+  it('keeps a copy of the unreadable value', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation();
+    writeCorrupt('schlag.sequences');
+
+    getSequences();
+
+    expect(getQuarantinedKeys()).toEqual(['schlag.sequences']);
+    expect(getQuarantinedValue('schlag.sequences')).toBe(BAD);
+    spy.mockRestore();
+  });
+
+  it('survives the overwrite that used to destroy it', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation();
+    writeCorrupt('schlag.sequences');
+
+    // Read (falls back to []), then save — which replaces the bad value.
+    getSequences();
+    saveSequences([makeSequence()]);
+
+    expect(getQuarantinedValue('schlag.sequences')).toBe(BAD);
+    spy.mockRestore();
+  });
+
+  it('keeps the first copy and does not pile up on repeated reads', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation();
+    writeCorrupt('schlag.sequences');
+    getSequences();
+
+    writeCorrupt('schlag.sequences', 'different garbage');
+    getSequences();
+    getSequences();
+
+    expect(getQuarantinedKeys()).toEqual(['schlag.sequences']);
+    expect(getQuarantinedValue('schlag.sequences')).toBe(BAD);
+    spy.mockRestore();
+  });
+
+  it('reports the failure through the storage error handler', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation();
+    const handler = jest.fn();
+    setStorageErrorHandler(handler);
+    writeCorrupt('schlag.sessions');
+
+    getSessions();
+
+    expect(handler).toHaveBeenCalledWith({
+      key: 'schlag.sessions',
+      message: expect.stringContaining('A copy of the unreadable data was kept.'),
+    });
+    spy.mockRestore();
+  });
+
+  it('quarantines each key on its own', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation();
+    writeCorrupt('schlag.sequences');
+    writeCorrupt('schlag.sessions');
+
+    getSequences();
+    getSessions();
+
+    expect(getQuarantinedKeys().sort()).toEqual([
+      'schlag.sequences',
+      'schlag.sessions',
+    ]);
+    spy.mockRestore();
+  });
+
+  it('clears a copy once it has been dealt with', () => {
+    const spy = jest.spyOn(console, 'error').mockImplementation();
+    writeCorrupt('schlag.sequences');
+    getSequences();
+
+    clearQuarantined('schlag.sequences');
+
+    expect(getQuarantinedKeys()).toEqual([]);
+    expect(getQuarantinedValue('schlag.sequences')).toBeNull();
+    spy.mockRestore();
+  });
+
+  it('does nothing when the stored value parses fine', () => {
+    saveSequences([makeSequence()]);
+    expect(getSequences()).toHaveLength(1);
+    expect(getQuarantinedKeys()).toEqual([]);
   });
 });

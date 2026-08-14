@@ -28,6 +28,9 @@ const KEYS = {
   SESSIONS: 'schlag.sessions',
 } as const;
 
+/** Prefix for copies of stored values that could not be parsed. */
+const QUARANTINE_PREFIX = 'schlag.corrupt.';
+
 // ---------------------------------------------------------------------------
 // Singleton MMKV instance
 // ---------------------------------------------------------------------------
@@ -52,12 +55,42 @@ export function setStorageErrorHandler(handler: StorageErrorHandler): void {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Keep a copy of a value that could not be parsed, under a key nothing else
+ * writes to, so the next save cannot overwrite it.
+ *
+ * Only the first bad copy per key is kept. A later failure is almost always
+ * the same data read again, and storing every attempt would grow without
+ * bound in exactly the situation where space may already be short.
+ */
+function quarantine(key: string, raw: string): void {
+  const quarantineKey = `${QUARANTINE_PREFIX}${key}`;
+  try {
+    if (storage.getString(quarantineKey) == null) {
+      storage.set(quarantineKey, raw);
+    }
+  } catch (err) {
+    // Nothing useful is left to try — the original value is untouched.
+    console.error(`[Schlag] Could not quarantine ${key}:`, err);
+  }
+}
+
 function getJSON<T>(key: string): T | null {
   const raw = storage.getString(key);
   if (raw == null) return null;
   try {
     return JSON.parse(raw) as T;
-  } catch {
+  } catch (err) {
+    // Returning null makes the caller fall back to its default, and the next
+    // save then writes over the unreadable value for good. Park a copy first
+    // so the data can still be recovered by hand.
+    quarantine(key, raw);
+    const message = err instanceof Error ? err.message : 'Stored data is unreadable';
+    console.error(`[Schlag] Storage read failed for ${key}:`, err);
+    onStorageError?.({
+      key,
+      message: `${message}. A copy of the unreadable data was kept.`,
+    });
     return null;
   }
 }
@@ -127,6 +160,31 @@ export function getSessions(): WorkoutSession[] {
 
 export function saveSessions(sessions: WorkoutSession[]): boolean {
   return setJSON(KEYS.SESSIONS, sessions);
+}
+
+// ---------------------------------------------------------------------------
+// Quarantine (unreadable data)
+// ---------------------------------------------------------------------------
+
+/**
+ * Keys whose stored value could not be parsed and was set aside.
+ * Returns the original key names, not the quarantine key names.
+ */
+export function getQuarantinedKeys(): string[] {
+  return storage
+    .getAllKeys()
+    .filter((k) => k.startsWith(QUARANTINE_PREFIX))
+    .map((k) => k.slice(QUARANTINE_PREFIX.length));
+}
+
+/** The raw text that was set aside for a key, or null if there is none. */
+export function getQuarantinedValue(key: string): string | null {
+  return storage.getString(`${QUARANTINE_PREFIX}${key}`) ?? null;
+}
+
+/** Drop the copy kept for a key, once it has been recovered or given up on. */
+export function clearQuarantined(key: string): void {
+  storage.remove(`${QUARANTINE_PREFIX}${key}`);
 }
 
 // ---------------------------------------------------------------------------
