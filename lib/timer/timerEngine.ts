@@ -259,6 +259,11 @@ export class TimerEngine {
     // and only a genuine single crossing should beep.
     const crossingCues: ToneName[] = [];
 
+    // emitEndCue() also writes pendingEndContext, and it does that on the
+    // first iteration whether or not the cue survives. Keep the value from
+    // before the loop so a dropped cue can take its context with it.
+    const contextBeforeLoop = this.pendingEndContext;
+
     while (
       remainingMs <= 0 &&
       this.state.status === 'running' &&
@@ -298,6 +303,12 @@ export class TimerEngine {
     // return would be noise, so those cues are dropped.
     if (safetyCounter === 1) {
       this.pendingCues.push(...crossingCues);
+    } else if (safetyCounter > 1) {
+      // The context has to go with the dropped cue. It names the interval
+      // that followed the FIRST boundary of the gap — an interval that has
+      // itself already finished — and leaving it behind makes the caller
+      // announce a name several boundaries out of date.
+      this.pendingEndContext = contextBeforeLoop;
     }
 
     // After the loop, handle remaining edge cases.

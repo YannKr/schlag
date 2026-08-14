@@ -1194,6 +1194,31 @@ describe('Audio cue detection (getAudioCuesToFire)', () => {
     });
   });
 
+  it('announces nothing after fast-forwarding over several boundaries', () => {
+    // A-B-C-D at 10s each. Background during A, return 25s later, inside C.
+    // B's end cue is dropped as unheard — its context must go with it, or
+    // the caller announces "B", an interval that has already been and gone.
+    const seq = makeSequence({
+      auto_advance: true,
+      intervals: [
+        makeInterval({ duration_seconds: 10, name: 'A' }),
+        makeInterval({ duration_seconds: 10, name: 'B' }),
+        makeInterval({ duration_seconds: 10, name: 'C' }),
+        makeInterval({ duration_seconds: 10, name: 'D' }),
+      ],
+    });
+    engine.startWorkout(seq);
+    engine.getAudioCuesToFire(engine.tick()!.remainingMs);
+
+    advanceTime(25_000);
+    const tick = engine.tick()!;
+    expect(tick.currentInterval.name).toBe('C');
+
+    engine.getAudioCuesToFire(tick.remainingMs);
+
+    expect(engine.consumeEndCueContext()).toBeNull();
+  });
+
   it('has no end cue context to consume when no boundary was crossed', () => {
     engine.startWorkout(makeSequence());
     engine.getAudioCuesToFire(engine.tick()!.remainingMs);
