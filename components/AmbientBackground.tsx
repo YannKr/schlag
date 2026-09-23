@@ -184,7 +184,7 @@ export default function AmbientBackground({
   const edgeColor = hexToRgba(glowColor, 0);
 
   return (
-    <Canvas style={[StyleSheet.absoluteFillObject, { backgroundColor: dimmedBg }]} pointerEvents="none">
+    <Canvas style={[StyleSheet.absoluteFill, { backgroundColor: dimmedBg }]} pointerEvents="none">
       <Group>
         <Circle cx={cx} cy={cy} r={animatedRadius}>
           <RadialGradient

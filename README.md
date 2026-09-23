@@ -25,7 +25,7 @@ Free, no ads, no paywalls.
 - **Framework**: React Native (Expo) with expo-router
 - **Web**: react-native-web
 - **State**: Zustand with MMKV persistence
-- **Audio**: expo-av (native), Web Audio API (browser), expo-speech (TTS)
+- **Audio**: expo-audio (native), Web Audio API (browser), expo-speech (TTS)
 - **Testing**: Jest (unit), Playwright (E2E)
 
 ## Getting Started

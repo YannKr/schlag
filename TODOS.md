@@ -27,6 +27,11 @@
 
 ## Timer / Notifications
 
+### expo-audio migration device QA
+**Priority:** P1
+**What:** The SDK 57 upgrade moved native beeps from expo-av to expo-audio; only mocks cover it. On real hardware verify: iOS beeps play with the ringer switch off and music playing (music keeps full volume); the first beep after Start fires on a cold launch; TTS announcements are not cut off by an overlapping beep; on Android, headset/Bluetooth play-pause still controls the music app after a beep (each expo-audio player owns a Media3 MediaSession).
+**Added:** 2026-09-22 via Expo SDK 57 upgrade review
+
 ### Background notification hardening (device QA)
 **Priority:** P1
 **What:** Verify on real hardware: Android Doze/OEM battery optimization can delay DATE-trigger notifications (no SCHEDULE_EXACT_ALARM; test Samsung/Xiaomi); force-quitting mid-workout leaves up to 60 future notifications firing with no in-app cancel path (consider a wall-clock horizon cap or a final summary notification); iOS permission dialog appears while the timer is already counting.
@@ -56,6 +61,11 @@
 **Added:** 2026-04-02 via user backlog
 
 ## Maintainability
+
+### Adopt React Compiler lint rules
+**Priority:** P3
+**What:** The Expo SDK 57 upgrade turned off six `react-hooks/*` React Compiler rules in `eslint.config.js` (refs, purity, set-state-in-effect, immutability, preserve-manual-memoization, globals). They flagged 28 existing sites, mostly ref and `Date.now()` reads during render in `app/workout/[id].tsx`. Refactor those sites and re-enable the rules before turning on the React Compiler.
+**Added:** 2026-09-22 via Expo SDK 57 upgrade
 
 ### Derive import-validation enum whitelists from canonical arrays
 **Priority:** P3

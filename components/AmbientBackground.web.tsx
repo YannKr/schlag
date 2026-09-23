@@ -179,12 +179,12 @@ export default function AmbientBackground({
 
   return (
     <View
-      style={[StyleSheet.absoluteFillObject, { backgroundColor: dimmedBg }]}
+      style={[StyleSheet.absoluteFill, { backgroundColor: dimmedBg }]}
       pointerEvents="none"
     >
       <Animated.View
         style={[
-          StyleSheet.absoluteFillObject,
+          StyleSheet.absoluteFill,
           gradientStyle,
           glowAnimatedStyle,
         ]}

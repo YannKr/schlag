@@ -3,7 +3,7 @@
  *
  * Provides a high-level API that the timer loop calls to play interval
  * start beeps, countdown tones, voice announcements, etc.  Internally
- * selects the correct ToneGenerator implementation (native via expo-av
+ * selects the correct ToneGenerator implementation (native via expo-audio
  * or web via Web Audio API) based on the current platform.
  *
  * Usage:
@@ -250,7 +250,7 @@ export class AudioEngine {
 
   /**
    * Play a custom audio file from a URI.
-   * Uses expo-av for native and falls back to HTMLAudioElement on web.
+   * Uses expo-audio for native and falls back to HTMLAudioElement on web.
    */
   private async playCustomAudio(uri: string): Promise<void> {
     try {
@@ -258,18 +258,18 @@ export class AudioEngine {
         const audio = new Audio(uri);
         await audio.play();
       } else {
-        // Dynamic import to avoid bundling expo-av's Sound in web builds.
-        const { Audio: ExpoAudio } = await import('expo-av');
-        const { sound } = await ExpoAudio.Sound.createAsync(
-          { uri },
-          { shouldPlay: true },
-        );
-        // Unload after playback completes to free memory.
-        sound.setOnPlaybackStatusUpdate((status) => {
-          if ('didJustFinish' in status && status.didJustFinish) {
-            sound.unloadAsync().catch(() => {});
+        // Dynamic import to avoid bundling expo-audio's player in web builds.
+        const { createAudioPlayer } = await import('expo-audio');
+        const player = createAudioPlayer({ uri });
+        // Release after playback completes to free the native player.
+        const subscription = player.addListener('playbackStatusUpdate', (status) => {
+          if (status.didJustFinish) {
+            subscription.remove();
+            player.remove();
+            player.release();
           }
         });
+        player.play();
       }
     } catch (error) {
       console.warn('[AudioEngine] Error playing custom audio:', error);
