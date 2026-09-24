@@ -1276,7 +1276,7 @@ const styles = StyleSheet.create({
 
   // Tap-to-continue overlay
   tapOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(20,20,22,0.78)',
     alignItems: 'center',
     justifyContent: 'center',

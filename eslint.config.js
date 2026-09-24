@@ -10,7 +10,7 @@ const expoConfig = require('eslint-config-expo/flat');
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/*', 'node_modules/*', 'playwright-report/*', 'test-results/*'],
+    ignores: ['.worktrees/*', 'dist/*', 'node_modules/*', 'playwright-report/*', 'test-results/*'],
   },
   {
     rules: {
@@ -21,6 +21,17 @@ module.exports = defineConfig([
       // Splitting `import type { X }` from `import { y }` of the same module
       // is the convention throughout this codebase.
       'import/no-duplicates': 'off',
+
+      // React Compiler rules, enabled as errors by eslint-config-expo 57.
+      // The app does not use the React Compiler, and the existing timer and
+      // workout-screen code reads refs and Date.now() during render on
+      // purpose. Tracked in TODOS.md ("Adopt React Compiler lint rules").
+      'react-hooks/globals': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/purity': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
     },
   },
   {

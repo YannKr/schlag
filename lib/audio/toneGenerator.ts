@@ -1,15 +1,17 @@
 /**
  * ToneGenerator — Native audio tone synthesis for Schlag.
  *
- * Generates beep tones as base64-encoded WAV data URIs and plays them
- * via expo-av.  All sounds are pre-loaded during initialization to
- * minimize playback latency during workouts.
+ * Generates beep tones as 16-bit PCM WAV files, writes them to the app
+ * cache directory once per launch and plays them via expo-audio.  All
+ * sounds are pre-loaded during initialization to minimize playback
+ * latency during workouts.
  *
- * CRITICAL: Sets AVAudioSession to `.playback` mode so audio fires
+ * CRITICAL: Sets the audio session to play in silent mode so audio fires
  * even when the iOS ringer switch is off.
  */
 
-import { Audio, AVPlaybackStatus } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
+import { Directory, File, Paths } from 'expo-file-system';
 import type { ToneName } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -17,20 +19,20 @@ import type { ToneName } from '@/types';
 // ---------------------------------------------------------------------------
 
 /**
- * Generate a single-channel 16-bit PCM WAV as a base64 data URI.
+ * Generate a single-channel 16-bit PCM WAV as raw bytes.
  *
  * @param frequency  Frequency in Hz (e.g. 440).
  * @param durationMs Duration in milliseconds.
  * @param volume     Amplitude 0..1 (1 = full scale).
  * @param sampleRate Sample rate (default 44100).
- * @returns          `data:audio/wav;base64,...` string.
+ * @returns          The complete WAV file (header + samples).
  */
 function generateToneWav(
   frequency: number,
   durationMs: number,
   volume: number = 1.0,
   sampleRate: number = 44100,
-): string {
+): Uint8Array {
   const numSamples = Math.floor((sampleRate * durationMs) / 1000);
   const numChannels = 1;
   const bitsPerSample = 16;
@@ -82,15 +84,7 @@ function generateToneWav(
     view.setInt16(headerSize + i * 2, Math.round(sample), true);
   }
 
-  // Convert ArrayBuffer to base64.
-  const uint8 = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < uint8.length; i++) {
-    binary += String.fromCharCode(uint8[i]);
-  }
-  const base64 = btoa(binary);
-
-  return `data:audio/wav;base64,${base64}`;
+  return new Uint8Array(buffer);
 }
 
 function writeString(view: DataView, offset: number, str: string): void {
@@ -101,7 +95,7 @@ function writeString(view: DataView, offset: number, str: string): void {
 
 /**
  * Generate a compound tone (multiple frequencies played in sequence)
- * as a single WAV data URI.
+ * as a single WAV file.
  *
  * @param segments Array of { frequency, durationMs, volume } objects.
  * @param gapMs    Silence gap between segments in ms.
@@ -110,7 +104,7 @@ function generateCompoundToneWav(
   segments: Array<{ frequency: number; durationMs: number; volume: number }>,
   gapMs: number,
   sampleRate: number = 44100,
-): string {
+): Uint8Array {
   // Calculate total number of samples.
   const gapSamples = Math.floor((sampleRate * gapMs) / 1000);
   let totalSamples = 0;
@@ -180,24 +174,17 @@ function generateCompoundToneWav(
     }
   }
 
-  const uint8 = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < uint8.length; i++) {
-    binary += String.fromCharCode(uint8[i]);
-  }
-  const base64 = btoa(binary);
-
-  return `data:audio/wav;base64,${base64}`;
+  return new Uint8Array(buffer);
 }
 
 // ---------------------------------------------------------------------------
-// Pre-defined tone data URIs
+// Pre-defined tone WAV data
 // ---------------------------------------------------------------------------
 
 /** Volume at -12dB relative to full scale. */
 const VOLUME_MINUS_12DB = Math.pow(10, -12 / 20); // ~0.25
 
-const TONE_CONFIGS: Record<ToneName, string> = {
+const TONE_CONFIGS: Record<ToneName, Uint8Array> = {
   intervalStart: generateToneWav(440, 80, 1.0),
   countdown3: generateToneWav(523, 80, 1.0), // C5
   countdown2: generateToneWav(466, 80, 1.0), // Bb4
@@ -225,87 +212,131 @@ const TONE_CONFIGS: Record<ToneName, string> = {
 // ToneGenerator class
 // ---------------------------------------------------------------------------
 
+/** Cache sub-directory that holds the generated tone files. */
+const TONE_DIR_NAME = 'schlag-tones';
+
+/** Upper bound on waiting for one tone to load before giving up on it. */
+const LOAD_TIMEOUT_MS = 2000;
+
+/**
+ * Resolve once the player has loaded its source, or after the timeout.
+ * expo-audio loads asynchronously, and on iOS seeking an item that is not
+ * ready can raise an uncaught AVFoundation exception.
+ */
+function waitForLoad(player: AudioPlayer): Promise<void> {
+  if (player.isLoaded) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, LOAD_TIMEOUT_MS);
+    const subscription = player.addListener('playbackStatusUpdate', (status) => {
+      if (status.isLoaded) done();
+    });
+    function done() {
+      clearTimeout(timer);
+      subscription.remove();
+      resolve();
+    }
+  });
+}
+
 export class ToneGenerator {
-  private sounds: Map<ToneName, Audio.Sound> = new Map();
+  private players: Map<ToneName, AudioPlayer> = new Map();
   private initialized = false;
 
   /**
-   * Pre-load all tones and configure the audio session for iOS silent
-   * switch bypass and background playback.
+   * Write all tones to the cache directory, pre-load them into players and
+   * configure the audio session for iOS silent switch bypass and
+   * background playback.
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
     // CRITICAL: Set audio mode BEFORE loading sounds.
     // This ensures iOS plays audio when the ringer switch is off.
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
-      shouldDuckAndroid: false,
+    // `mixWithOthers` requests no audio focus, so the user's music keeps
+    // playing (and is not ducked) around the short beeps.
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'mixWithOthers',
     });
 
-    // Pre-load all tones.
-    const entries = Object.entries(TONE_CONFIGS) as Array<[ToneName, string]>;
-    const loadPromises = entries.map(async ([name, uri]) => {
+    const dir = new Directory(Paths.cache, TONE_DIR_NAME);
+    try {
+      dir.create({ idempotent: true, intermediates: true });
+    } catch (error) {
+      console.warn('[ToneGenerator] Failed to create tone directory:', error);
+      return;
+    }
+
+    // Write and pre-load all tones. `keepAudioSessionActive` stops iOS from
+    // deactivating the session after every beep, which would add latency to
+    // the next cue and could cut off a voice announcement mid-word.
+    const entries = Object.entries(TONE_CONFIGS) as Array<[ToneName, Uint8Array]>;
+    for (const [name, wav] of entries) {
       try {
-        const { sound } = await Audio.Sound.createAsync(
-          { uri },
-          { shouldPlay: false, volume: 1.0 },
-        );
-        this.sounds.set(name, sound);
+        const file = new File(dir, `${name}.wav`);
+        file.write(wav);
+        const player = createAudioPlayer({ uri: file.uri }, { keepAudioSessionActive: true });
+        this.players.set(name, player);
       } catch (error) {
         console.warn(`[ToneGenerator] Failed to load tone "${name}":`, error);
       }
-    });
+    }
 
-    await Promise.all(loadPromises);
+    await Promise.all(Array.from(this.players.values(), waitForLoad));
     this.initialized = true;
   }
 
   /**
    * Play a pre-loaded tone.
    *
-   * The sound is rewound to position 0 before playing so it can be
+   * The player is rewound to position 0 before playing so it can be
    * re-triggered rapidly (e.g. countdown beeps at 1-second intervals).
    *
    * @param name   The tone to play.
    * @param volume Optional volume override (0..1).
    */
   async playTone(name: ToneName, volume?: number): Promise<void> {
-    const sound = this.sounds.get(name);
-    if (!sound) {
+    const player = this.players.get(name);
+    if (!player) {
       console.warn(`[ToneGenerator] Tone "${name}" not loaded.`);
       return;
     }
 
     try {
-      // Stop current playback before rewinding to prevent overlap/clipping.
-      await sound.stopAsync();
-      await sound.setPositionAsync(0);
-
-      if (volume !== undefined) {
-        await sound.setVolumeAsync(volume);
+      // Rewind only a loaded player that has played before. Seeking an
+      // unloaded item can crash on iOS, and a fresh player is already at 0.
+      if (player.isLoaded && player.currentTime > 0) {
+        await player.seekTo(0);
       }
 
-      await sound.playAsync();
+      if (volume !== undefined) {
+        player.volume = volume;
+      }
+
+      player.play();
     } catch (error) {
       console.warn(`[ToneGenerator] Error playing tone "${name}":`, error);
     }
   }
 
   /**
-   * Unload all pre-loaded sounds to free memory.
+   * Release all pre-loaded players to free memory.
    * Call when the audio engine is no longer needed.
    */
   async cleanup(): Promise<void> {
-    const unloadPromises: Promise<AVPlaybackStatus>[] = [];
-
-    this.sounds.forEach((sound) => {
-      unloadPromises.push(sound.unloadAsync());
+    this.players.forEach((player) => {
+      try {
+        // remove() only unregisters the player; release() frees the native
+        // player immediately instead of waiting for garbage collection.
+        player.remove();
+        player.release();
+      } catch {
+        // Already released.
+      }
     });
 
-    await Promise.allSettled(unloadPromises);
-    this.sounds.clear();
+    this.players.clear();
     this.initialized = false;
   }
 }

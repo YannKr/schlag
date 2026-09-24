@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.2.0] - 2026-09-22
+
+### Changed
+- **Upgraded to Expo SDK 57** (React Native 0.86, React 19.2.3, TypeScript 6.0). Android builds target API level 36 (Android 16), which Google Play requires for new apps and updates from August 31, 2026.
+- **Native beeps now play through expo-audio.** expo-av is unmaintained and was removed. Tones are generated once per launch into the app cache and pre-loaded, and the audio session still plays with the iOS ringer switch off and mixes with the user's music instead of pausing it.
+- The Android app no longer requests the legacy external storage permissions. Importing and exporting files uses the system picker, which needs no storage permission.
+- The Android adaptive icon now uses the dedicated foreground, background and monochrome (themed icon) assets. The app config was also moved off fields Expo removed, so `expo-doctor` passes all checks.
+
 ## [0.3.1.0] - 2026-06-10
 
 ### Fixed

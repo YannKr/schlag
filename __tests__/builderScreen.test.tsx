@@ -8,7 +8,6 @@
 
 import React from 'react';
 import { act } from 'react';
-// @ts-expect-error — no type declarations for react-test-renderer
 import renderer from 'react-test-renderer';
 
 // ---------------------------------------------------------------------------
