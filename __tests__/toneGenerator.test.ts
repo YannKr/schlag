@@ -63,7 +63,7 @@ jest.mock('expo-file-system', () => {
     constructor(dir: { uri: string }, name: string) {
       this.uri = `${dir.uri}/${name}`;
     }
-    write() {
+    writeSync() {
       mockWrites.push(this.uri);
     }
   }

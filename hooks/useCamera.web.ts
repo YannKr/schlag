@@ -11,7 +11,7 @@ import type { NormalizedLandmark } from '@/lib/repTracking/types';
 const FRAME_INTERVAL_MS = 1000 / 15; // 15fps
 
 const WASM_URL =
-  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm';
+  'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm';
 const MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 

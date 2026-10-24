@@ -47,7 +47,7 @@ describe('MediaPipe integrity and CSP', () => {
     headers.match(/Content-Security-Policy: (.*)/)?.[1] ?? '';
 
   const wasmPath =
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm/';
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm/';
   const modelPath =
     'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
@@ -69,6 +69,16 @@ describe('MediaPipe integrity and CSP', () => {
   it('allow-lists the exact model URL, never the whole storage host', () => {
     expect(csp).toContain(modelPath);
     expect(csp).not.toMatch(/https:\/\/storage\.googleapis\.com(?![/\w])/);
+  });
+
+  // tasks-vision 1.1+ POSTs usage metrics to odml.pa.googleapis.com and has
+  // no option to turn this off. connect-src must stay an exact allow-list:
+  // a wildcard such as https://*.googleapis.com would let the metrics out.
+  it('allows connections only to the exact sources the app needs', () => {
+    const connectSrc = csp.match(/connect-src ([^;]*)/)?.[1] ?? '';
+    expect(connectSrc.trim().split(/\s+/).sort()).toEqual(
+      ["'self'", 'https://cloudflareinsights.com', modelPath, wasmPath].sort(),
+    );
   });
 
   it('does not allow the CDN as a style or font source', () => {

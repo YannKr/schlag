@@ -189,7 +189,7 @@ export function VoicePicker({
                   <View style={styles.empty}>
                     <Text style={styles.emptyText}>{error}</Text>
                   </View>
-                ) : null
+                ) : undefined
               }
               style={styles.list}
             />

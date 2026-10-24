@@ -119,7 +119,6 @@ export function SequenceCard({
   return (
     <View
       accessibilityLabel={`Sequence: ${sequence.name}`}
-      // @ts-expect-error — onClick/onMouseEnter/onMouseLeave valid on web but not typed in RN
       onClick={Platform.OS === 'web' ? onPress : undefined}
       onStartShouldSetResponder={Platform.OS !== 'web' ? () => true : undefined}
       onResponderRelease={Platform.OS !== 'web' ? onPress : undefined}
