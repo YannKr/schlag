@@ -31,10 +31,11 @@ test.describe('Storage resilience', () => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
 
-    // Clear localStorage before loading
+    // Clear localStorage before the app's scripts run. Loading, clearing and
+    // reloading instead races the service worker registration: the reload
+    // cancels the sw.js fetch, and WebKit reports that as a page error.
+    await page.addInitScript(() => localStorage.clear());
     await page.goto('/');
-    await page.evaluate(() => localStorage.clear());
-    await page.reload();
     await page.waitForLoadState('networkidle');
 
     // App should load and show the library (empty state)
