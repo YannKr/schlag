@@ -275,7 +275,7 @@ export class ToneGenerator {
     for (const [name, wav] of entries) {
       try {
         const file = new File(dir, `${name}.wav`);
-        file.write(wav);
+        file.writeSync(wav);
         const player = createAudioPlayer({ uri: file.uri }, { keepAudioSessionActive: true });
         this.players.set(name, player);
       } catch (error) {

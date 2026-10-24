@@ -31,8 +31,13 @@ test.describe('Storage resilience', () => {
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
 
-    // Clear localStorage before loading
+    // Let the service worker finish registering before the reload. A reload
+    // that cancels the sw.js fetch is reported as a page error by WebKit.
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+    });
     await page.evaluate(() => localStorage.clear());
     await page.reload();
     await page.waitForLoadState('networkidle');

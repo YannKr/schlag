@@ -32,6 +32,11 @@
 **What:** The SDK 57 upgrade moved native beeps from expo-av to expo-audio; only mocks cover it. On real hardware verify: iOS beeps play with the ringer switch off and music playing (music keeps full volume); the first beep after Start fires on a cold launch; TTS announcements are not cut off by an overlapping beep; on Android, headset/Bluetooth play-pause still controls the music app after a beep (each expo-audio player owns a Media3 MediaSession).
 **Added:** 2026-09-22 via Expo SDK 57 upgrade review
 
+### Expo SDK 58 device QA
+**Priority:** P1
+**What:** The SDK 58 upgrade was verified with unit tests, the web e2e suite and JS bundle exports only. On real hardware check: an Android release build, where R8 minification is now on by default (`android.enableMinifyInReleaseBuilds`), still starts and runs MMKV, Skia and Reanimated; on iOS, the new scene-delegate life cycle keeps background audio and the backgrounding notifications working; the first beep after a cold start still plays (tone files now use `File.writeSync()`). Also create a sequence and finish a workout: `uuid` v4 needs a global `crypto`, and neither React Native nor Expo installs one (this was already true with uuid 13). If Hermes has none, add `react-native-get-random-values` or switch to `expo-crypto`'s `randomUUID()`.
+**Added:** 2026-10-23 via Expo SDK 58 upgrade
+
 ### Background notification hardening (device QA)
 **Priority:** P1
 **What:** Verify on real hardware: Android Doze/OEM battery optimization can delay DATE-trigger notifications (no SCHEDULE_EXACT_ALARM; test Samsung/Xiaomi); force-quitting mid-workout leaves up to 60 future notifications firing with no in-app cancel path (consider a wall-clock horizon cap or a final summary notification); iOS permission dialog appears while the timer is already counting.
@@ -60,12 +65,22 @@
 **Why:** Removes manual rep counting on mobile, where most gym users are.
 **Added:** 2026-04-02 via user backlog
 
+### Revisit MediaPipe 1.x when it ships a metrics opt-out
+**Priority:** P3
+**What:** `@mediapipe/tasks-vision` is held at 0.10.34. Version 1.1.0 added "stats logging to Web Tasks": every task POSTs usage metrics to `odml.pa.googleapis.com` every 60 s, with no option to turn it off (`enableLogging` is declared in the types but not in the bundle). Upgrade once MediaPipe ships a working opt-out. Then re-check the web export too: 0.10.35+ contains an `import()` with a non-literal argument, which Metro rejects.
+**Added:** 2026-10-23 via Expo SDK 58 upgrade
+
 ## Maintainability
 
 ### Adopt React Compiler lint rules
 **Priority:** P3
 **What:** The Expo SDK 57 upgrade turned off six `react-hooks/*` React Compiler rules in `eslint.config.js` (refs, purity, set-state-in-effect, immutability, preserve-manual-memoization, globals). They flagged 28 existing sites, mostly ref and `Date.now()` reads during render in `app/workout/[id].tsx`. Refactor those sites and re-enable the rules before turning on the React Compiler.
 **Added:** 2026-09-22 via Expo SDK 57 upgrade
+
+### Move to ESLint 10 and TypeScript 7
+**Priority:** P3
+**What:** Both are held back at the latest 9.x and 6.0.x. eslint-config-expo 58 bundles eslint-plugin-react 7.37.5, which crashes on ESLint 10 (`contextOrFilename.getFilename is not a function`). TypeScript 7 ships no JavaScript API, which typescript-eslint, ts-jest and ts-node (used to load `jest.config.ts`) need. Upgrade when eslint-config-expo and those tools support them.
+**Added:** 2026-10-23 via Expo SDK 58 upgrade
 
 ### Derive import-validation enum whitelists from canonical arrays
 **Priority:** P3

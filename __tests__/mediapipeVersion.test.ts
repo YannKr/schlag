@@ -71,6 +71,17 @@ describe('MediaPipe integrity and CSP', () => {
     expect(csp).not.toMatch(/https:\/\/storage\.googleapis\.com(?![/\w])/);
   });
 
+  // tasks-vision 1.1+ POSTs usage metrics to odml.pa.googleapis.com and has
+  // no option to turn this off, which is why the app stays on 0.10.34.
+  // connect-src must stay an exact allow-list, so that a future upgrade or a
+  // wildcard such as https://*.googleapis.com cannot let such requests out.
+  it('allows connections only to the exact sources the app needs', () => {
+    const connectSrc = csp.match(/connect-src ([^;]*)/)?.[1] ?? '';
+    expect(connectSrc.trim().split(/\s+/).sort()).toEqual(
+      ["'self'", 'https://cloudflareinsights.com', modelPath, wasmPath].sort(),
+    );
+  });
+
   it('does not allow the CDN as a style or font source', () => {
     const styleSrc = csp.match(/style-src ([^;]*)/)?.[1] ?? '';
     const fontSrc = csp.match(/font-src ([^;]*)/)?.[1] ?? '';

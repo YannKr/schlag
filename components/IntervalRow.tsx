@@ -100,7 +100,6 @@ export function IntervalRow({
   return (
     <View
       accessibilityLabel={`Interval ${index + 1}: ${interval.name}, ${formattedDuration}. Tap to edit.`}
-      // @ts-expect-error — onClick is valid on web
       onClick={Platform.OS === 'web' ? onPress : undefined}
       onStartShouldSetResponder={Platform.OS !== 'web' ? () => true : undefined}
       onResponderRelease={Platform.OS !== 'web' ? onPress : undefined}
