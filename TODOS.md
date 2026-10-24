@@ -65,6 +65,11 @@
 **Why:** Removes manual rep counting on mobile, where most gym users are.
 **Added:** 2026-04-02 via user backlog
 
+### Revisit MediaPipe 1.x when it ships a metrics opt-out
+**Priority:** P3
+**What:** `@mediapipe/tasks-vision` is held at 0.10.34. Version 1.1.0 added "stats logging to Web Tasks": every task POSTs usage metrics to `odml.pa.googleapis.com` every 60 s, with no option to turn it off (`enableLogging` is declared in the types but not in the bundle). Upgrade once MediaPipe ships a working opt-out. Then re-check the web export too: 0.10.35+ contains an `import()` with a non-literal argument, which Metro rejects.
+**Added:** 2026-10-23 via Expo SDK 58 upgrade
+
 ## Maintainability
 
 ### Adopt React Compiler lint rules

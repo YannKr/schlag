@@ -3,8 +3,8 @@
 ## [0.3.3.0] - 2026-10-23
 
 ### Changed
-- **Upgraded to Expo SDK 58** (React Native 0.88, React 19.3) and moved every other dependency to its latest version. The exceptions are packages that Expo SDK 58 pins to an earlier release, plus ESLint 10 and TypeScript 7, which the Expo lint and test tooling cannot run yet.
-- **Web rep tracking uses MediaPipe Tasks Vision 1.1.1.** Pose detection still runs entirely on the device. This version also tries to send usage metrics (no camera data) to Google, and the site's Content-Security-Policy blocks that request.
+- **Upgraded to Expo SDK 58** (React Native 0.88, React 19.3) and moved every other dependency to its latest version. The exceptions are packages that Expo SDK 58 pins to an earlier release, ESLint 10 and TypeScript 7, which the Expo lint and test tooling cannot run yet, and MediaPipe (below).
+- **MediaPipe Tasks Vision stays at 0.10.34 on purpose.** Version 1.1.0 added "stats logging to Web Tasks": it sends usage metrics to Google every 60 seconds and has no option to turn this off. Rep tracking gains nothing from 1.x. A new test keeps the site's Content-Security-Policy from ever allowing connections beyond the exact sources the app needs.
 - The web app still ships as one JavaScript bundle. Expo SDK 58 splits each screen into its own file by default, which would leave screens you have not opened yet unavailable offline.
 - Native beep files are written to disk before their players load. Expo SDK 58 made file writes asynchronous.
 - CI runs on Node 24 (LTS).

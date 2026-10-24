@@ -47,7 +47,7 @@ describe('MediaPipe integrity and CSP', () => {
     headers.match(/Content-Security-Policy: (.*)/)?.[1] ?? '';
 
   const wasmPath =
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm/';
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm/';
   const modelPath =
     'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
@@ -72,8 +72,9 @@ describe('MediaPipe integrity and CSP', () => {
   });
 
   // tasks-vision 1.1+ POSTs usage metrics to odml.pa.googleapis.com and has
-  // no option to turn this off. connect-src must stay an exact allow-list:
-  // a wildcard such as https://*.googleapis.com would let the metrics out.
+  // no option to turn this off, which is why the app stays on 0.10.34.
+  // connect-src must stay an exact allow-list, so that a future upgrade or a
+  // wildcard such as https://*.googleapis.com cannot let such requests out.
   it('allows connections only to the exact sources the app needs', () => {
     const connectSrc = csp.match(/connect-src ([^;]*)/)?.[1] ?? '';
     expect(connectSrc.trim().split(/\s+/).sort()).toEqual(
