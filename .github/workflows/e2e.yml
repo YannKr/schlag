@@ -48,8 +48,12 @@ jobs:
       - name: Get Playwright cache key
         id: playwright-key
         run: |
-          echo "os=$(. /etc/os-release; echo "$ID-$VERSION_ID")" >> "$GITHUB_OUTPUT"
-          echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+          . /etc/os-release
+          test -n "$ID" && test -n "$VERSION_ID"
+          version=$(node -p "require('@playwright/test/package.json').version")
+          test -n "$version"
+          echo "os=$ID-$VERSION_ID" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
         id: playwright-cache
