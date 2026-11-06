@@ -30,6 +30,7 @@
 ### expo-audio migration device QA
 **Priority:** P1
 **What:** The SDK 57 upgrade moved native beeps from expo-av to expo-audio; only mocks cover it. On real hardware verify: iOS beeps play with the ringer switch off and music playing (music keeps full volume); the first beep after Start fires on a cold launch; TTS announcements are not cut off by an overlapping beep; on Android, headset/Bluetooth play-pause still controls the music app after a beep (each expo-audio player owns a Media3 MediaSession).
+`npx expo install --fix` (Expo 58.0.23) adds the `expo-audio` config plugin to `app.json`. It was left out: by default it adds the `RECORD_AUDIO` permission, `NSMicrophoneUsageDescription` and an Android media-playback foreground service. If device QA shows that background beeps need the plugin, add it with `"microphonePermission": false` and `"recordAudioAndroid": false`.
 **Added:** 2026-09-22 via Expo SDK 57 upgrade review
 
 ### Expo SDK 58 device QA
@@ -68,6 +69,7 @@
 ### Revisit MediaPipe 1.x when it ships a metrics opt-out
 **Priority:** P3
 **What:** `@mediapipe/tasks-vision` is held at 0.10.34. Version 1.1.0 added "stats logging to Web Tasks": every task POSTs usage metrics to `odml.pa.googleapis.com` every 60 s, with no option to turn it off (`enableLogging` is declared in the types but not in the bundle). Upgrade once MediaPipe ships a working opt-out. Then re-check the web export too: 0.10.35+ contains an `import()` with a non-literal argument, which Metro rejects.
+**Re-checked 2026-11-06:** 1.2.2 still has no opt-out. Every task still starts the 60-second metrics upload when it is created, and `enableLogging` is still missing from the bundle. The `globalThis.__HOST_ENVIRONMENT__` override added in 1.2.0 only changes the platform reported in the metrics.
 **Added:** 2026-10-23 via Expo SDK 58 upgrade
 
 ## Maintainability
@@ -80,7 +82,13 @@
 ### Move to ESLint 10 and TypeScript 7
 **Priority:** P3
 **What:** Both are held back at the latest 9.x and 6.0.x. eslint-config-expo 58 bundles eslint-plugin-react 7.37.5, which crashes on ESLint 10 (`contextOrFilename.getFilename is not a function`). TypeScript 7 ships no JavaScript API, which typescript-eslint, ts-jest and ts-node (used to load `jest.config.ts`) need. Upgrade when eslint-config-expo and those tools support them.
+**Re-checked 2026-11-06:** ESLint 10.14 still crashes the same way (eslint-config-expo 58.0.4 is still the latest). TypeScript 7.0.2 now passes `tsc` and Jest: Jest 30 loads `jest.config.ts` with Node's built-in type stripping, so ts-node is not used, and ts-jest is not used as a transform either (both are unused dev dependencies). typescript-eslint 8.72 still requires TypeScript < 6.1 and crashes on 7.0, and Expo SDK 58 recommends TypeScript ~6.0.3.
 **Added:** 2026-10-23 via Expo SDK 58 upgrade
+
+### Clear the remaining npm audit advisories
+**Priority:** P3
+**What:** `npm audit` reports 31 moderate and low advisories from three packages: glob <= 14.0.1 (fixed in 14.0.2), minimatch < 11.0.1 (fixed in 11.0.1) and deepmerge 4.2.0-4.3.1 (no fix). Jest 30.5, the Expo CLI and `@expo/fingerprint`, and typescript-eslint use them at build and test time only, and they request glob ^10/^13 and minimatch ^9/^10. Overriding them to the new majors would change the API under those tools. Update when Jest, Expo and typescript-eslint move to the fixed majors.
+**Added:** 2026-11-06 via dependency sweep
 
 ### Derive import-validation enum whitelists from canonical arrays
 **Priority:** P3

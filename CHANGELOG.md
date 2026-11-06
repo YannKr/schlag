@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.3.1] - 2026-11-06
+
+### Fixed
+- **The nightly WebKit end-to-end tests pass again on GitHub's Ubuntu 26.04 runners.** GitHub is moving `ubuntu-latest` from Ubuntu 24.04 to 26.04, one run at a time. The Playwright browser cache key held only "Linux", the browser name and the lockfile hash, so a WebKit build downloaded on 24.04 was restored on 26.04. There it cannot start, because it needs ICU 74 (`libicudata.so.74`) and 26.04 ships ICU 78. The key now also holds the OS release, the CPU architecture and the Playwright version, so each runner image gets its own browser builds. Playwright has shipped a separate WebKit build for Ubuntu 26.04 since 1.61.
+
+### Changed
+- Every dependency is on the latest release that Expo SDK 58 allows: Expo 58.0.23 and the other Expo SDK 58 patch releases, React Native 0.88.1, react-native-safe-area-context 5.11.1, react-native-screens 4.30.1, Playwright 1.65.0 and zustand 5.1.0.
+- CI runs on Node 26, which became the LTS release on 2026-10-28. Expo SDK 58 supports it.
+- Still held back: React 19.3.1, react-native-gesture-handler 3.5, react-native-svg 15.16.1 and react-native-worklets 0.13.1 (Expo SDK 58 pins earlier releases), ESLint 10 and TypeScript 7 (the Expo lint tooling cannot run them yet), and MediaPipe Tasks Vision 0.10.34 (1.2.2 still sends usage metrics with no opt-out).
+
+### Security
+- `npm audit` no longer reports high-severity advisories. The node-forge and zod advisories came in through the Expo CLI and are fixed in Expo 58.0.23. 31 moderate and low advisories remain, in glob, minimatch and deepmerge. Only Jest, the Expo CLI and typescript-eslint use these packages, at build and test time, and none of them ships in the app. For glob and minimatch, the fixes are new major releases that those tools do not accept yet. deepmerge has no fixed release (see TODOS.md).
+
 ## [0.3.3.0] - 2026-10-23
 
 ### Changed
