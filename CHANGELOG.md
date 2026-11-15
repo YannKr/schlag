@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.3.2] - 2026-11-14
+
+### Changed
+- Expo and its packages are on the latest Expo SDK 58 patch releases: Expo 58.0.25, expo-router 58.0.31, expo-notifications 58.1.9, expo-sqlite 58.0.17 and eleven other Expo packages. expo-sqlite 58.0.17 fixes a native bug: after one statement failed with `database is locked`, every later transaction on that connection failed too.
+- Still held back: Playwright 1.65.1 (one day old, and its two fixes do not apply to this project), React 19.3.1, react-native-gesture-handler 3.5, react-native-svg 15.16.1 and react-native-worklets 0.13.1 (Expo SDK 58 pins earlier releases), ESLint 10 and TypeScript 7 (the Expo lint tooling cannot run them yet), and MediaPipe Tasks Vision 0.10.34 (1.2.3 still sends usage metrics with no opt-out).
+
+### Security
+- `npm audit` reports 28 moderate and low advisories, one fewer than before this update, and no high-severity advisories. The Expo CLI no longer uses glob. The advisories that remain are in glob, minimatch and deepmerge, which only Jest, the Expo tooling and typescript-eslint use at build and test time (see TODOS.md).
+
 ## [0.3.3.1] - 2026-11-06
 
 ### Fixed
