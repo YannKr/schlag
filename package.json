@@ -1,6 +1,6 @@
 {
   "name": "schlag",
-  "version": "0.3.3.2",
+  "version": "0.3.3.3",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -48,7 +48,7 @@
     "zustand": "^5.1.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.65.0",
+    "@playwright/test": "^1.65.1",
     "@types/jest": "30.0.0",
     "@types/react": "~19.3.0",
     "@types/react-test-renderer": "^19.3.1",

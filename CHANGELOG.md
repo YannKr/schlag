@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.3.3] - 2026-11-19
+
+### Changed
+- Playwright is on 1.65.1. In the lockfile, postcss is on 8.5.33, react-fast-compare on 3.2.3 and noxcturnal on 0.1.14. The last sweep held these releases because they were less than three days old.
+- Held back because the releases are less than three days old: Expo 58.0.26, expo-file-system 58.0.14, expo-router 58.0.32, expo-sqlite 58.0.18 and jest-expo 58.0.15 (all from 2026-11-17), and typescript-eslint 8.73.0, which needs minimatch 11.0.9 from 2026-11-16. Until the Expo releases are installed, `expo-doctor` reports 19 of 20 checks, because it asks for them.
+- Still held back: React 19.3.1, react-native-gesture-handler 3.5, react-native-svg 15.16.1, react-native-reanimated 4.8 and react-native-worklets 0.14 (Expo SDK 58 pins earlier releases), ESLint 10 and TypeScript 7 (the Expo lint tooling cannot run them yet), and MediaPipe Tasks Vision 0.10.34 (1.2.3 still sends usage metrics with no opt-out).
+
+### Security
+- `npm audit` reports 27 moderate advisories and no high-severity advisories. They are in glob and minimatch, which only Jest, the Expo tooling and typescript-eslint use at build and test time. typescript-eslint 8.73.0 moves to a fixed minimatch release and will clear five of them (see TODOS.md).
+
 ## [0.3.3.2] - 2026-11-14
 
 ### Changed
