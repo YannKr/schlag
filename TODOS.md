@@ -71,6 +71,7 @@
 **What:** `@mediapipe/tasks-vision` is held at 0.10.34. Version 1.1.0 added "stats logging to Web Tasks": every task POSTs usage metrics to `odml.pa.googleapis.com` every 60 s, with no option to turn it off (`enableLogging` is declared in the types but not in the bundle). Upgrade once MediaPipe ships a working opt-out. Then re-check the web export too: 0.10.35+ contains an `import()` with a non-literal argument, which Metro rejects.
 **Re-checked 2026-11-06:** 1.2.2 still has no opt-out. Every task still starts the 60-second metrics upload when it is created, and `enableLogging` is still missing from the bundle. The `globalThis.__HOST_ENVIRONMENT__` override added in 1.2.0 only changes the platform reported in the metrics.
 **Re-checked 2026-11-14:** 1.2.3 is the same. The bundle still posts to `odml.pa.googleapis.com/v1/log`, and `enableLogging` is still only in the types.
+**Re-checked 2026-11-19:** 1.2.3 is still the latest release.
 **Added:** 2026-10-23 via Expo SDK 58 upgrade
 
 ## Maintainability
@@ -85,12 +86,14 @@
 **What:** Both are held back at the latest 9.x and 6.0.x. eslint-config-expo 58 bundles eslint-plugin-react 7.37.5, which crashes on ESLint 10 (`contextOrFilename.getFilename is not a function`). TypeScript 7 ships no JavaScript API, which typescript-eslint, ts-jest and ts-node (used to load `jest.config.ts`) need. Upgrade when eslint-config-expo and those tools support them.
 **Re-checked 2026-11-06:** ESLint 10.14 still crashes the same way (eslint-config-expo 58.0.4 is still the latest). TypeScript 7.0.2 now passes `tsc` and Jest: Jest 30 loads `jest.config.ts` with Node's built-in type stripping, so ts-node is not used, and ts-jest is not used as a transform either (both are unused dev dependencies). typescript-eslint 8.72 still requires TypeScript < 6.1 and crashes on 7.0, and Expo SDK 58 recommends TypeScript ~6.0.3.
 **Re-checked 2026-11-14:** No change. eslint-config-expo 58.0.4 and eslint-plugin-react 7.37.5 are still the latest releases, and eslint-plugin-react accepts ESLint up to 9 only. typescript-eslint 8.72.2 still requires TypeScript < 6.1.
+**Re-checked 2026-11-19:** No change. ESLint 10.15.0 is out, but eslint-config-expo 58.0.4 and eslint-plugin-react 7.37.5 are still the latest releases. typescript-eslint 8.73.0 still requires TypeScript < 6.1.
 **Added:** 2026-10-23 via Expo SDK 58 upgrade
 
 ### Clear the remaining npm audit advisories
 **Priority:** P3
 **What:** `npm audit` reports 31 moderate and low advisories from three packages: glob <= 14.0.1 (fixed in 14.0.2), minimatch < 11.0.1 (fixed in 11.0.1) and deepmerge 4.2.0-4.3.1 (no fix). Jest 30.5, the Expo CLI and `@expo/fingerprint`, and typescript-eslint use them at build and test time only, and they request glob ^10/^13 and minimatch ^9/^10. Overriding them to the new majors would change the API under those tools. Update when Jest, Expo and typescript-eslint move to the fixed majors.
 **Re-checked 2026-11-14:** 28 advisories remain. Expo CLI 58.1.20 no longer uses glob. Jest 30.5.2, `@expo/fingerprint` 0.21.10 and typescript-eslint 8.72 still request glob ^10/^13 and minimatch ^9/^10.
+**Re-checked 2026-11-19:** 27 advisories remain, all moderate. npm no longer reports deepmerge. typescript-eslint 8.73.0 (2026-11-16) requests minimatch ^11.0.1, and `npm audit fix` then leaves 22. It is held until its minimatch 11.0.9 dependency is three days old. Jest 30.5.2 and `@expo/fingerprint` still request the old majors.
 **Added:** 2026-11-06 via dependency sweep
 
 ### Derive import-validation enum whitelists from canonical arrays
