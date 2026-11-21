@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.3.4] - 2026-11-21
+
+### Changed
+- Expo is on 58.0.26, expo-file-system on 58.0.14, expo-router on 58.0.32, expo-sqlite on 58.0.18 and jest-expo on 58.0.15. The last sweep held these releases because they were less than three days old. `expo-doctor` reports 20 of 20 checks again.
+- In the lockfile, typescript-eslint is on 8.73.0, which uses minimatch 11.0.9.
+- Held back because the releases are less than three days old: source-map-js 1.2.4 (2026-11-19) and @babel/plugin-transform-export-namespace-from 7.29.15 (2026-11-20). The lockfile keeps 1.2.2 and 7.29.7.
+- Still held back: React 19.3.1, react-native-gesture-handler 3.5, react-native-svg 15.16.1, react-native-reanimated 4.8 and react-native-worklets 0.14 (Expo SDK 58 pins earlier releases), ESLint 10 and TypeScript 7 (the Expo lint tooling cannot run them yet), and MediaPipe Tasks Vision 0.10.34 (1.2.3 is still the latest release).
+
+### Security
+- `npm audit` reports 22 moderate advisories, down from 27, and no high-severity advisories. The remaining ones are in glob and minimatch, which only Jest and the Expo tooling use at build and test time (see TODOS.md).
+
 ## [0.3.3.3] - 2026-11-19
 
 ### Changed
